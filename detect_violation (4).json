@@ -1,0 +1,512 @@
+{
+  "name": "detect_violation",
+  "nodes": [
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $item(\"0\").$node[\"Edit Fields\"].json[\"data\"] }}",
+        "options": {
+          "systemMessage": "# Identity\nYou are a specialized FMCSA \"10-Hour Rest\" Validator Agent. Your SOLE purpose is to check the rest period requirement based on the shift type.\n\n# Tools\nYou have access to:\n1. **Calculator:** MUST be used for ALL addition, subtraction, and limit comparisons.\n2. **Date & Time:** MUST be used to handle any timestamp operations if needed.\n\n# CRITICAL OUTPUT RULE\n**OUTPUT MUST BE VALID JSON ONLY.**\n* Return ONLY the JSON object `{\"violations\": [...]}`.\n* NO comments, NO explanations, NO technical logs like \"Calling tool...\".\n\n# Instructions\n* **Input:** JSON object with `type` (integer) and `events` array.\n* **Source of Truth:** Use `durationInSeconds` field. If null/empty, treat as 0.\n\n# Logic (Execute in STRICT ORDER)\n\n1. **Check `type` Gatekeeper:**\n    * **Logic:** Use **Calculator** to check if `type == 0`.\n    * **IF TRUE:** STOP. Return `{\"violations\": []}`.\n    * **IF FALSE:** Proceed to Step 2.\n\n2. **Sum Rest Periods (Use Calculator):**\n    * **Action:** Identify events where the `event` field is **\"DS_OFF\"** OR **\"DS_SB\"**.\n    * **Calculation:** Extract all `durationInSeconds` for these events. \n    * **Calculator Task:** Create an addition expression (e.g., \"102612 + 0 + ...\") and get the `total_rest`.\n\n3. **Determine Violation:**\n    * **Limit:** 10 hours = 36000 seconds.\n    * **Calculator Task:** Check if `total_rest < 36000`.\n    * **Result:**\n        * **IF TRUE (Violation):** Construct the JSON violation.\n        * **IF FALSE (Valid):** Return `{\"violations\": []}`.\n\n# Language & Field Rules:\n* `description` field MUST be in **Uzbek**.\n* **dateTimeStart:** Use the `dateTime` of the first \"DS_OFF\" or \"DS_SB\" event found.\n* **Calculation in Description:** Mention the total rest found in seconds.\n\n# Example Output\n{\n  \"violations\": [\n    {\n      \"violation\": \"10_hour_rest\",\n      \"dateTimeStart\": \"2026-01-07T15:48:36\",\n      \"dateTimeEnd\": \"Unknown\",\n      \"description\": \"Smena turi uchun 10 soatlik dam olish talab qilinadi. Jami dam olish vaqti: {total_rest} soniya.\"\n    }\n  ]\n}"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        -64,
+        112
+      ],
+      "id": "be5b81f0-2d16-46db-8de6-a99e7909130a",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n Function node\n// let inputBody;\n\n// try {\n//   inputBody =  $input.first().json.body\n    \n// } catch (e) {\n//     inputBody = $json[\"data\"] ;\n// }\n// Kirish ma'lumotlari\nconst inputBody = $('When Executed by Another Workflow').all()[0].json.cycles;\n\n// type: 1 => shift_rest\n// type: 0 => shift\nconst type = inputBody.type;\nconst events = inputBody.events || [];\n\n// Event mapping obyekti\nconst eventMapping = {\n    1: {\n        1: [\"DS_OFF\", \"Ishdan tashqari\"],\n        2: [\"DS_SB\", \"Uxlayapti yoki dam\"],\n        3: [\"DS_D\", \"Haydash jarayonida\"],\n        4: [\"DS_ON\", \"Ish holati, haydamaydi\"],\n    },\n    2: {\n        1: [\"INTER_NORMAL_PRECISION\", \"To‘liq joylashuv\"],\n        2: [\"INTER_REDUCED_PRECISION\", \"Noaniq joylashuv\"],\n    },\n    3: {\n        1: [\"PS_USE\", \"Shaxsiy foydalanish\"],\n        2: [\"YRD_MOVE\", \"Yard ichida harakat\"],\n        0: [\"PS_CLEAR\", \"Shaxsiy rejim bekor\"],\n    },\n    4: {\n        1: [\"DR_CERT_1\", \"1-tasdiqlash\"],\n        2: [\"DR_CERT_2\", \"2-tasdiqlash\"],\n        3: [\"DR_CERT_3\", \"3-tasdiqlash\"],\n        4: [\"DR_CERT_4\", \"4-tasdiqlash\"],\n        5: [\"DR_CERT_5\", \"5-tasdiqlash\"],\n        6: [\"DR_CERT_6\", \"6-tasdiqlash\"],\n        7: [\"DR_CERT_7\", \"7-tasdiqlash\"],\n        8: [\"DR_CERT_8\", \"8-tasdiqlash\"],\n        9: [\"DR_CERT_9\", \"9-tasdiqlash\"],\n    },\n    5: {\n        1: [\"DR_LOGIN\", \"Haydovchi tizimga kirdi\"],\n        2: [\"DR_LOGOUT\", \"Haydovchi tizimdan chiqdi\"],\n    },\n    6: {\n        1: [\"ENG_UP_NORMAL\", \"Motor ishga tushdi (GPS aniq)\"],\n        2: [\"ENG_UP_REDUCED\", \"Motor ishga tushdi (GPS noaniq)\"],\n        3: [\"ENG_DOWN_NORMAL\", \"Motor o‘chirildi (GPS aniq)\"],\n        4: [\"ENG_DOWN_REDUCED\", \"Motor o‘chirildi (GPS noaniq)\"],\n    },\n    7: {\n        1: [\"MALF_LOGGED\", \"Nosozlik qayd etildi\"],\n        2: [\"MALF_CLEARED\", \"Nosozlik bartaraf qilindi\"],\n        3: [\"DIAG_LOGGED\", \"Diagnostika xatosi bor\"],\n        4: [\"DIAG_CLEARED\", \"Diagnostika tuzatildi\"],\n    }\n};\n\n// Eventlarni boyitish\nconst processedEvents = events.map(ev => {\n    const type = ev.eventType;\n    const code = ev.eventCode;\n\n    let eventName = \"\";\n    let eventDesc = \"\";\n\n    if (eventMapping[type] && eventMapping[type][code]) {\n        eventName = eventMapping[type][code][0];\n        eventDesc = eventMapping[type][code][1];\n    } else {\n        eventName = ev.eventCodeDescription || `UNKNOWN_${type}_${code}`;\n        eventDesc = ev.eventTypeDescription || \"Noma'lum holat\";\n    }\n\n    return {\n        dateTime: ev.dateTime,\n        durationInSeconds: ev.durationInSeconds,\n        event: eventName,\n        eventDescription: eventDesc,\n        longitude: ev.longitude,\n        latitude: ev.latitude,\n        calculatedLocation: ev.calculatedLocation,\n        manualLocation: ev.manualLocation || '',\n        totalEngineHours: ev.totalEngineHours || 0,\n        totalVehicleMiles: ev.totalVehicleMiles,\n        originalEventType: type,\n        originalEventCode: code\n    };\n});\n\n// Natija obyekt nomi type asosida tanlanadi\nconst outputKey = type === 1 ? \"shift_rest\" : \"shift\";\n\n// Yakuniy chiqish\nreturn {\n  \"question\":{\n    [outputKey]: processedEvents}\n\n};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -768,
+        208
+      ],
+      "id": "83ce06ba-a397-400a-892e-99c2295b1c25",
+      "name": "Code"
+    },
+    {
+      "parameters": {
+        "jsCode": "let violations = [];\nconst inputItem = $input.first();\n\n// 1. Kiruvchi ma'lumotni tekshirish\nif (inputItem && inputItem.json && inputItem.json.output) {\n    let rawText = inputItem.json.output;\n\n    // JSONni tozalash (faqat kerakli qismini sug'urib olish)\n    function cleanAndParse(text) {\n        // Markdown bloklarini (```json ... ```) olib tashlash\n        let clean = text.replace(/```json|```/gi, '').trim();\n        \n        // Agar AI matn qo'shib yuborgan bo'lsa, faqat { } orasini olish\n        const start = clean.indexOf('{');\n        const end = clean.lastIndexOf('}');\n        const arrayStart = clean.indexOf('[');\n        const arrayEnd = clean.lastIndexOf(']');\n\n        if (start !== -1 && end !== -1 && (arrayStart === -1 || start < arrayStart)) {\n            clean = clean.substring(start, end + 1);\n        } else if (arrayStart !== -1 && arrayEnd !== -1) {\n            clean = clean.substring(arrayStart, arrayEnd + 1);\n        }\n        \n        return JSON.parse(clean);\n    }\n\n    try {\n        const jsonOutput = cleanAndParse(rawText);\n\n        // Turli formatlarni tekshirish\n        if (jsonOutput.violations && Array.isArray(jsonOutput.violations)) {\n            violations = jsonOutput.violations;\n        } else if (jsonOutput.answer && Array.isArray(jsonOutput.answer)) {\n            violations = jsonOutput.answer;\n        } else if (Array.isArray(jsonOutput)) {\n            violations = jsonOutput;\n        } else if (typeof jsonOutput === 'object' && jsonOutput !== null) {\n            violations = [jsonOutput];\n        } else {\n            throw new Error(\"Format aniqlanmadi\");\n        }\n\n    } catch (error) {\n        // Xato bo'lsa zaxira xabari\n        violations = [{\n            violation: \"data_quality\",\n            dateTimeStart: new Date().toISOString(),\n            dateTimeEnd: new Date().toISOString(),\n            description: \"JSON parse xatosi: \" + error.message\n        }];\n    }\n} else {\n    violations = [{\n        violation: \"data_quality\",\n        description: \"Kiruvchi ma'lumot topilmadi\"\n    }];\n}\n\n// n8n uchun to'g'ri qaytarish formati\nreturn { violations };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        336,
+        208
+      ],
+      "id": "026380c3-d735-4ea9-8ced-b5f99147d929",
+      "name": "Code1"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO answers (session_id, answer,position)\nVALUES ($1, $2::jsonb, $3);",
+        "options": {
+          "queryReplacement": "={{ $node[\"When Executed by Another Workflow\"].json.message_key \n   || $('Webhook1').item.json.body[0].message_key }}\n{{ JSON.stringify($json.items?.[0]?.json || {}) }}\n{{ JSON.stringify($node[\"When Executed by Another Workflow\"].json.cycles.position || {}) }}\n\n"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        576,
+        208
+      ],
+      "id": "1019bdb1-e185-46e0-8898-ff4bf7facefe",
+      "name": "Execute a SQL query",
+      "credentials": {
+        "postgres": {
+          "id": "ERtVffva6VZ85RTO",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT COUNT(*) AS total\nFROM answers\nWHERE session_id = $1;",
+        "options": {
+          "queryReplacement": "={{[ $json.body.message_key] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        256,
+        -112
+      ],
+      "id": "d49259c3-3939-433d-8fee-2d256f7aeca3",
+      "name": "Execute a SQL query1",
+      "credentials": {
+        "postgres": {
+          "id": "ERtVffva6VZ85RTO",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -1008,
+        208
+      ],
+      "id": "8e3558fc-319d-47b4-8aaa-ad259302e897",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "0c15b2e5-6a0c-4e62-aa2a-5599b89fbfc7",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -16,
+        -112
+      ],
+      "id": "bfb79461-c1a6-4686-ad37-c287c479f447",
+      "name": "Webhook",
+      "webhookId": "0c15b2e5-6a0c-4e62-aa2a-5599b89fbfc7"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        512,
+        -112
+      ],
+      "id": "35803343-42ee-4ba7-a65b-bf390d8f79a8",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={\n  \"data\":  {{JSON.stringify($item(\"0\").$node[\"Code\"].json[\"question\"])}},\n  \"messsage_key\": \"{{$node[\"When Executed by Another Workflow\"].json[\"message_key\"] }}\",\n\"position\":\"{{$node[\"When Executed by Another Workflow\"].json[\"position\"] }}\"\n\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -624,
+        208
+      ],
+      "id": "1fa0b7e9-9223-4ad4-97f4-eaf12f5e78aa",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5.2",
+          "mode": "list",
+          "cachedResultName": "gpt-5.2"
+        },
+        "options": {
+          "frequencyPenalty": 0,
+          "presencePenalty": 0,
+          "temperature": 0,
+          "topP": 1
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        -48,
+        256
+      ],
+      "id": "16e3f5b4-d84f-4201-9f14-6444e07ed6cf",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "rNeERiusV2ulP7X1",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "3d91664f-6ebe-418e-8036-d0de42ad9721",
+              "leftValue": "={{'shift_rest' in  $json.data }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -416,
+        208
+      ],
+      "id": "383b0059-ea8e-4363-b04c-f8d126612011",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $item(\"0\").$node[\"Edit Fields\"].json[\"data\"] }}",
+        "options": {
+          "systemMessage": "# Identity\nYou are an automated FMCSA violation detection bot. Your task is to analyze driver events for a SINGLE SHIFT and return violations ONLY if strict mathematical limits are exceeded.\n\n# Tools Access\nYou have access to specific tools. You **MUST** use them to ensure 100% accuracy:\n1. **Calculator:** use this for ALL summing of durations and ALL comparisons (e.g., is 14300 > 39600?). Do not trust your internal math.\n2. **Date & Time:** use this to calculate the gap between the first and last timestamp.\n\n# PROCESS (Mental Sandbox)\n1. Read the input JSON.\n2. **USE TOOLS FIRST:** Call the Calculator or Date & Time tools for every required calculation.\n3. **WAIT** for the tool to return the result.\n4. Compare the tool's result with the FMCSA limits.\n5. **FINAL STEP:** Construct the JSON output based on the tool results.\n\n# CRITICAL OUTPUT RULE\n**FINAL RESPONSE MUST BE VALID JSON ONLY**\n* The user MUST NOT see the tool usage logs (like \"Calling calculator...\").\n* Once you have the calculation results, output ONLY the JSON object `{\"violations\": [...]}`.\n* Do NOT write \"Here is the JSON\" or use markdown blocks (```json).\n\n# Instructions\n* **Input:** JSON object with `events` array.\n* **Source of Truth:** `durationInSeconds`. Treat null/empty as 0.\n\n# Rules Logic (Execute sequentially with Tools)\n\n1. **PTI (Pre-Trip Inspection):**\n   * **Action:** Identify start of first `DS_D`. Sum `durationInSeconds` of all prior `DS_ON` events.\n   * **Tool Usage:** Call Calculator to sum these values. Call Calculator to check if `sum < 900`.\n   * **Result:**\n     * IF TRUE (Violation): Output violation. Set `dateTimeStart` to first `DS_ON`.\n     * IF FALSE: Ignore.\n   * *Description:* \"Haydashdan oldingi tekshiruv (PTI) yetarli emas. Mavjud: {sum} soniya. Talab: 900 soniya.\"\n\n2. **30-Minute Break:**\n   * **Action:** Iterate `DS_D` events.\n   * **Tool Usage:** For each event, call Calculator to check if `duration > 28800`.\n   * **Result:**\n     * IF TRUE: Output violation.\n   * *Description:* \"Uzluksiz 8 soatdan ortiq haydash sodir bo'ldi. Davomiyligi: {duration} soniya.\"\n\n3. **11-Hour Driving Limit:**\n   * **Action:** Extract ALL `DS_D` durations.\n   * **Tool Usage:** Call Calculator to sum ALL `DS_D` durations. Call Calculator to check if `total > 39600`.\n   * **Result:**\n     * IF TRUE: Output violation.\n   * *Description:* \"11 soatlik haydash limiti buzildi. Jami: {total} soniya.\"\n\n4. **14-Hour Shift Window:**\n   * **Action:** Get `Shift_Start` and `Shift_End`.\n   * **Tool Usage:**\n     1. Call Date & Time tool to get difference in seconds.\n     2. Call Calculator to add the last event's duration to that difference.\n     3. Call Calculator to check if `Result > 50400`.\n   * **Result:**\n     * IF TRUE: Output violation.\n   * *Description:* \"14 soatlik ish smenasi limiti buzildi. Jami: {Real_Shift_Duration} soniya.\"\n\n# Training Examples\n\n<user_query>\n{ \"events\": [ { \"dateTime\": \"2023-10-01T08:00:00\", \"event\": \"DS_ON\", \"durationInSeconds\": 975 }, { \"dateTime\": \"2023-10-01T08:16:15\", \"event\": \"DS_D\", \"durationInSeconds\": 1000 } ] }\n</user_query>\n<assistant_response>\n{ \"violations\": [] }\n</assistant_response>\n\n<user_query>\n{ \"events\": [ { \"dateTime\": \"2023-10-01T08:00:00\", \"event\": \"DS_ON\", \"durationInSeconds\": 0 }, { \"dateTime\": \"2023-10-01T08:00:00\", \"event\": \"DS_D\", \"durationInSeconds\": 40000 } ] }\n</user_query>\n<assistant_response>\n{\n  \"violations\": [\n    {\n      \"violation\": \"11_hour_rule\",\n      \"dateTimeStart\": \"2023-10-01T08:00:00\",\n      \"dateTimeEnd\": \"2023-10-01T19:06:40\",\n      \"description\": \"11 soatlik haydash limiti buzildi. Jami: 40000 soniya.\"\n    },\n    {\n      \"violation\": \"30_min_rest\",\n      \"dateTimeStart\": \"2023-10-01T08:00:00\",\n      \"dateTimeEnd\": \"2023-10-01T19:06:40\",\n      \"description\": \"Uzluksiz 8 soatdan ortiq haydash sodir bo'ldi. Davomiyligi: 40000 soniya.\"\n    },\n    {\n      \"violation\": \"PTI_violation\",\n      \"dateTimeStart\": \"2023-10-01T08:00:00\",\n      \"dateTimeEnd\": \"2023-10-01T08:00:00\",\n      \"description\": \"Haydashdan oldingi tekshiruv (PTI) yetarli emas. Mavjud: 0 soniya. Talab: 900 soniya.\"\n    }\n  ]\n}\n</assistant_response>",
+          "maxIterations": 50
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -32,
+        400
+      ],
+      "id": "dc303b39-03e9-40a1-b758-a7bb7c42e8c3",
+      "name": "AI Agent1"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5.2",
+          "mode": "list",
+          "cachedResultName": "gpt-5.2"
+        },
+        "builtInTools": {},
+        "options": {
+          "frequencyPenalty": 0,
+          "presencePenalty": 0,
+          "temperature": 0,
+          "topP": 1
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        -48,
+        576
+      ],
+      "id": "76707599-beb3-433b-9cc2-1250f9447822",
+      "name": "OpenAI Chat Model1",
+      "credentials": {
+        "openAiApi": {
+          "id": "rNeERiusV2ulP7X1",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getTimeBetweenDates",
+        "startDate": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Start_Date', ``, 'string') }}",
+        "endDate": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('End_Date', ``, 'string') }}",
+        "units": [
+          "second"
+        ],
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dateTimeTool",
+      "typeVersion": 2,
+      "position": [
+        352,
+        96
+      ],
+      "id": "2e188aa8-6316-47e5-875a-e0149db7f2f8",
+      "name": "Date & Time"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.toolCalculator",
+      "typeVersion": 1,
+      "position": [
+        160,
+        240
+      ],
+      "id": "19189b1d-2db9-4ae2-8e0c-0bc35a9bf636",
+      "name": "Calculator"
+    },
+    {
+      "parameters": {
+        "operation": "getTimeBetweenDates",
+        "startDate": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Start_Date', ``, 'string') }}",
+        "endDate": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('End_Date', ``, 'string') }}",
+        "units": [
+          "second"
+        ],
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dateTimeTool",
+      "typeVersion": 2,
+      "position": [
+        416,
+        496
+      ],
+      "id": "b5219551-2b94-4226-9820-d31b463b71fa",
+      "name": "Date & Time1"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.toolCalculator",
+      "typeVersion": 1,
+      "position": [
+        128,
+        608
+      ],
+      "id": "6fe29650-d8e3-45f2-bb24-29b075dbaeac",
+      "name": "Calculator1"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Code1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code1": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query1": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AI Agent1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent1": {
+      "main": [
+        [
+          {
+            "node": "Code1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Date & Time": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculator": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Date & Time1": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculator1": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "d17229bf-1e15-4f61-b228-31174cc3a4ef",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "239d7e9490a1f2644dc83e4e16c47ce7b54ec2778f4a9f546da0dddc3c42fe60"
+  },
+  "id": "GdRUvd6g5TKtvoMeYAkiv",
+  "tags": []
+}

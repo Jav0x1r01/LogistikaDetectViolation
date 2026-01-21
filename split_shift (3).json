@@ -1,0 +1,312 @@
+{
+  "name": "split_shift",
+  "nodes": [
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.question }}",
+        "options": {
+          "systemMessage": "# Identity\nYou are a specialized FMCSA \"Shift Rest\" Analyzer Agent. Your purpose is to calculate the validity of a driver's rest period with 100% mathematical precision.\n\n# Critical Instruction: TOOL USE IS MANDATORY\nDo NOT calculate mentally. Use the **Calculator** or **Python** tool.\n1. **Source Data:** Read the `shift_rest` array.\n2. **Strict Algorithm:** - Start from the first event in the list.\n   - Sum `durationInSeconds` only as long as events are \"DS_SB\" or \"DS_OFF\".\n   - **CRITICAL:** If you encounter \"DS_D\" or \"DS_ON\", stop summing immediately. Any \"DS_OFF\" or \"DS_SB\" after an \"ON/D\" event must be ignored.\n3. **Calculation:** `total_rest = [sum of valid initial rest]`. \n   - `deficit = 36000 - total_rest`.\n\n# Output Format (Strict JSON)\nReturn ONLY the JSON. No markdown.\n\n{\n  \"overtimes\": [\n    {\n      \"overtime\": <deficit_integer_if_positive_else_0>,\n      \"type\": 1,\n      \"description\": \"Shift_rest davomiyligi <total_rest>s. Minimal limit 36000s. Yetishmovchilik: <deficit>s.\"\n    }\n  ],\n  \"gen_overtime\": 0,\n  \"gen_description\": null,\n  \"shift_type\": \"shift_rest\"\n}"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        -16,
+        224
+      ],
+      "id": "51663393-80b0-4a5b-b290-b91da1cf4d4c",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n Function node\n\n// Kirish ma'lumotlari\nconst inputBody = $('When Executed by Another Workflow').all()[0].json.cycles;\n\n// type: 1 => shift_rest\n// type: 0 => shift\nconst type = inputBody.type;\nconst events = inputBody.events || [];\n\n// Event mapping obyekti\nconst eventMapping = {\n    1: {\n        1: [\"DS_OFF\", \"Ishdan tashqari\"],\n        2: [\"DS_SB\", \"Uxlayapti yoki dam\"],\n        3: [\"DS_D\", \"Haydash jarayonida\"],\n        4: [\"DS_ON\", \"Ish holati, haydamaydi\"],\n    },\n    2: {\n        1: [\"INTER_NORMAL_PRECISION\", \"To‘liq joylashuv\"],\n        2: [\"INTER_REDUCED_PRECISION\", \"Noaniq joylashuv\"],\n    },\n    3: {\n        1: [\"PS_USE\", \"Shaxsiy foydalanish\"],\n        2: [\"YRD_MOVE\", \"Yard ichida harakat\"],\n        0: [\"PS_CLEAR\", \"Shaxsiy rejim bekor\"],\n    },\n    4: {\n        1: [\"DR_CERT_1\", \"1-tasdiqlash\"],\n        2: [\"DR_CERT_2\", \"2-tasdiqlash\"],\n        3: [\"DR_CERT_3\", \"3-tasdiqlash\"],\n        4: [\"DR_CERT_4\", \"4-tasdiqlash\"],\n        5: [\"DR_CERT_5\", \"5-tasdiqlash\"],\n        6: [\"DR_CERT_6\", \"6-tasdiqlash\"],\n        7: [\"DR_CERT_7\", \"7-tasdiqlash\"],\n        8: [\"DR_CERT_8\", \"8-tasdiqlash\"],\n        9: [\"DR_CERT_9\", \"9-tasdiqlash\"],\n    },\n    5: {\n        1: [\"DR_LOGIN\", \"Haydovchi tizimga kirdi\"],\n        2: [\"DR_LOGOUT\", \"Haydovchi tizimdan chiqdi\"],\n    },\n    6: {\n        1: [\"ENG_UP_NORMAL\", \"Motor ishga tushdi (GPS aniq)\"],\n        2: [\"ENG_UP_REDUCED\", \"Motor ishga tushdi (GPS noaniq)\"],\n        3: [\"ENG_DOWN_NORMAL\", \"Motor o‘chirildi (GPS aniq)\"],\n        4: [\"ENG_DOWN_REDUCED\", \"Motor o‘chirildi (GPS noaniq)\"],\n    },\n    7: {\n        1: [\"MALF_LOGGED\", \"Nosozlik qayd etildi\"],\n        2: [\"MALF_CLEARED\", \"Nosozlik bartaraf qilindi\"],\n        3: [\"DIAG_LOGGED\", \"Diagnostika xatosi bor\"],\n        4: [\"DIAG_CLEARED\", \"Diagnostika tuzatildi\"],\n    }\n};\n\n// Eventlarni boyitish\nconst processedEvents = events.map(ev => {\n    const type = ev.eventType;\n    const code = ev.eventCode;\n\n    let eventName = \"\";\n    let eventDesc = \"\";\n\n    if (eventMapping[type] && eventMapping[type][code]) {\n        eventName = eventMapping[type][code][0];\n        eventDesc = eventMapping[type][code][1];\n    } else {\n        eventName = ev.eventCodeDescription || `UNKNOWN_${type}_${code}`;\n        eventDesc = ev.eventTypeDescription || \"Noma'lum holat\";\n    }\n\n    return {\n        dateTime: ev.dateTime,\n        durationInSeconds: ev.durationInSeconds,\n        event: eventName,\n        eventDescription: eventDesc,\n        longitude: ev.longitude,\n        latitude: ev.latitude,\n        calculatedLocation: ev.calculatedLocation,\n        manualLocation: ev.manualLocation || '',\n        totalEngineHours: ev.totalEngineHours || 0,\n        totalVehicleMiles: ev.totalVehicleMiles,\n        originalEventType: type,\n        originalEventCode: code\n    };\n});\n\n// Natija obyekt nomi type asosida tanlanadi\nconst outputKey = type === 1 ? \"shift_rest\" : \"shift\";\n\n// Yakuniy chiqish\nreturn {\n  \"question\":{\n    [outputKey]: processedEvents}\n\n};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -400,
+        224
+      ],
+      "id": "65165742-0a2c-4d48-bc4c-e6541b8c2467",
+      "name": "Code"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = [{ json: {} }];\n\n// Kiruvchi ma'lumotni olish\nconst inputItem = $input.first();\n\nif (inputItem && inputItem.json && inputItem.json.output) {\n  let rawText = inputItem.json.output;\n\n  let cleanedText = rawText\n    .trim()\n    .replace(/^```json\\s*/i, '')\n    .replace(/```\\s*$/g, '')\n    .replace(/“/g, '\"')\n    .replace(/”/g, '\"')\n    .replace(/\\\\n/g, '')\n    .replace(/\\s+/g, ' ')\n    .trim();\n\n  try {\n    const jsonOutput = JSON.parse(cleanedText);\n\n    let violations = [];\n\n    if (jsonOutput.violations && Array.isArray(jsonOutput.violations)) {\n      violations = jsonOutput.violations;\n    } else if (Array.isArray(jsonOutput)) {\n      violations = jsonOutput;\n    } else if (typeof jsonOutput === 'object' && jsonOutput !== null) {\n      violations = [jsonOutput];\n    } else {\n      throw new Error(\"JSON format noto‘g‘ri\");\n    }\n\n    // Shu yerda array sifatida Postgres'ga yuborish uchun to‘g‘ri formatda saqlaymiz\n    items[0].json = { violations };\n\n  } catch (error) {\n    items[0].json = { violations: [] }; // yoki xatolik obyektini qo‘shish mumkin\n  }\n} else {\n  items[0].json = { violations: [] };\n}\n\nreturn { items };\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        224
+      ],
+      "id": "e1a169d6-034e-4777-972f-fdd90f99e128",
+      "name": "Code1"
+    },
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -960,
+        224
+      ],
+      "id": "36fab335-f752-47d3-a3e4-b24bdf168e7e",
+      "name": "When Executed by Another Workflow",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO answers (session_id, answer,position)\nVALUES ($1, $2::jsonb, $3);",
+        "options": {
+          "queryReplacement": "={{$node[\"When Executed by Another Workflow\"].json.message_key}}\n {{ JSON.stringify($json[\"items\"][0].json.violations || [])}}\n{{JSON.stringify( $node[\"When Executed by Another Workflow\"].json[\"position\"] )\n}}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        768,
+        224
+      ],
+      "id": "6f48922d-abbb-45a3-9268-0bb3e78a3fc8",
+      "name": "Execute a SQL query",
+      "credentials": {
+        "postgres": {
+          "id": "ERtVffva6VZ85RTO",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT COUNT(*) AS total\nFROM answers\nWHERE session_id = $1;",
+        "options": {
+          "queryReplacement": "={{[ $json.body.message_key] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1136,
+        528
+      ],
+      "id": "5e557adc-6c91-466d-b618-9aa1d83eb04a",
+      "name": "Execute a SQL query1",
+      "credentials": {
+        "postgres": {
+          "id": "ERtVffva6VZ85RTO",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1376,
+        528
+      ],
+      "id": "ca76455e-0bb4-4690-a242-78626ce1b5b7",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "2c7c357e-06b9-4e87-85c6-c28453fc7e54",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        768,
+        528
+      ],
+      "id": "c7ea256b-d5b3-46c2-9791-aef11cd7f825",
+      "name": "Webhook",
+      "webhookId": "2c7c357e-06b9-4e87-85c6-c28453fc7e54"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5.2",
+          "mode": "list",
+          "cachedResultName": "gpt-5.2"
+        },
+        "options": {
+          "frequencyPenalty": 0,
+          "presencePenalty": 0,
+          "temperature": 0,
+          "topP": 1
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        -144,
+        432
+      ],
+      "id": "003850dc-467f-455d-8892-2eead95dce72",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "rNeERiusV2ulP7X1",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getTimeBetweenDates",
+        "startDate": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Start_Date', ``, 'string') }}",
+        "endDate": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('End_Date', ``, 'string') }}",
+        "units": [
+          "second"
+        ],
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dateTimeTool",
+      "typeVersion": 2,
+      "position": [
+        384,
+        416
+      ],
+      "id": "c49aefdc-fe41-4bca-a2d6-d07ec384dd73",
+      "name": "Date & Time"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.toolCalculator",
+      "typeVersion": 1,
+      "position": [
+        144,
+        432
+      ],
+      "id": "ef84befd-802d-4372-a3b9-dfb8084119e5",
+      "name": "Calculator"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Code1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code1": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query1": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Date & Time": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculator": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "b6ccc197-0cf8-450f-9924-88a38eef0aaa",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "239d7e9490a1f2644dc83e4e16c47ce7b54ec2778f4a9f546da0dddc3c42fe60"
+  },
+  "id": "u_FC3-EdCm3u4uUcfmyUQ",
+  "tags": []
+}

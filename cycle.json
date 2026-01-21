@@ -1,0 +1,483 @@
+{
+  "name": "cycle",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "51cd2d7d-0808-4278-ad3c-8bed3645dd4b",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -848,
+        48
+      ],
+      "id": "f6e3e9b3-a9ad-4fca-ab4a-0a58b3faadcb",
+      "name": "Webhook",
+      "webhookId": "51cd2d7d-0808-4278-ad3c-8bed3645dd4b"
+    },
+    {
+      "parameters": {
+        "jsCode": "// N8n Function node kodi\nlet cycleInput;\n\ntry {\n  cycleInput =  $json[\"result\"] \n    \n} catch (e) {\n    cycleInput = $input.first().json.body;\n}\nconst eventMapping = {\n  1: {\n    1: [\"DS_OFF\", \"Ishdan tashqari\"],\n    2: [\"DS_SB\", \"Uxlayapti yoki dam\"],\n    3: [\"DS_D\", \"Haydash jarayonida\"],\n    4: [\"DS_ON\", \"Ish holati, haydamaydi\"],\n  },\n  2: {\n    1: [\"INTER_NORMAL_PRECISION\", \"To'liq joylashuv\"],\n    2: [\"INTER_REDUCED_PRECISION\", \"Noaniq joylashuv\"],\n  },\n  3: {\n    1: [\"PS_USE\", \"Shaxsiy foydalanish\"],\n    2: [\"YRD_MOVE\", \"Yard ichida harakat\"],\n    0: [\"PS_CLEAR\", \"Shaxsiy rejim bekor\"],\n  },\n  4: {\n    1: [\"DR_CERT_1\", \"1-tasdiqlash\"],\n    2: [\"DR_CERT_2\", \"2-tasdiqlash\"],\n    3: [\"DR_CERT_3\", \"3-tasdiqlash\"],\n    4: [\"DR_CERT_4\", \"4-tasdiqlash\"],\n    5: [\"DR_CERT_5\", \"5-tasdiqlash\"],\n    6: [\"DR_CERT_6\", \"6-tasdiqlash\"],\n    7: [\"DR_CERT_7\", \"7-tasdiqlash\"],\n    8: [\"DR_CERT_8\", \"8-tasdiqlash\"],\n    9: [\"DR_CERT_9\", \"9-tasdiqlash\"],\n  },\n  5: {\n    1: [\"DR_LOGIN\", \"Haydovchi tizimga kirdi\"],\n    2: [\"DR_LOGOUT\", \"Haydovchi tizimdan chiqdi\"],\n  },\n  6: {\n    1: [\"ENG_UP_NORMAL\", \"Motor ishga tushdi (GPS aniq)\"],\n    2: [\"ENG_UP_REDUCED\", \"Motor ishga tushdi (GPS noaniq)\"],\n    3: [\"ENG_DOWN_NORMAL\", \"Motor o'chirildi (GPS aniq)\"],\n    4: [\"ENG_DOWN_REDUCED\", \"Motor o'chirildi (GPS noaniq)\"],\n  },\n  7: {\n    1: [\"MALF_LOGGED\", \"Nosozlik qayd etildi\"],\n    2: [\"MALF_CLEARED\", \"Nosozlik bartaraf qilindi\"],\n    3: [\"DIAG_LOGGED\", \"Diagnostika xatosi bor\"],\n    4: [\"DIAG_CLEARED\", \"Diagnostika tuzatildi\"],\n  }\n};\n\n// Eventni qayta ishlash funksiyasi\nfunction processEvent(event) {\n  const type = event.eventType;\n  const code = event.eventCode;\n  let eventName = \"\";\n  let eventDesc = \"\";\n  \n  if (eventMapping[type] && eventMapping[type][code]) {\n    eventName = eventMapping[type][code][0];\n    eventDesc = eventMapping[type][code][1];\n  } else {\n    eventName = event.eventCodeDescription || `UNKNOWN_${type}_${code}`;\n    eventDesc = event.eventTypeDescription || \"Noma'lum holat\";\n  }\n  \n  return {\n    dateTime: event.dateTime,\n    durationInSeconds: event.durationInSeconds,\n    event: eventName,\n    eventDescription: eventDesc,\n    longitude: event.longitude,\n    latitude: event.latitude,\n    calculatedLocation: event.calculatedLocation,\n    manualLocation: event.manualLocation || '',\n    totalEngineHours: event.totalEngineHours || 0,\n    totalVehicleMiles: event.totalVehicleMiles\n  };\n}\n\n// Asosiy transformatsiya\nlet result;\n\nif (cycleInput.shifts && Array.isArray(cycleInput.shifts)) {\n  // Cycle uchun\n  const shiftsArray = cycleInput.shifts.map(shift => {\n    const shiftObj = {};\n    \n    if (shift.type === 0 && shift.events && Array.isArray(shift.events)) {\n      shiftObj.shift = shift.events.map(processEvent);\n    }\n    \n    if (shift.type === 1 && shift.events && Array.isArray(shift.events)) {\n      shiftObj.shift_rest = shift.events.map(processEvent);\n    }\n    \n    return Object.keys(shiftObj).length > 0 ? shiftObj : {};\n  }).filter(shift => Object.keys(shift).length > 0);\n  \n  result = {\n    cycle_type: 'cycle',\n    shifts: shiftsArray\n  };\n} else if (cycleInput.events && Array.isArray(cycleInput.events)) {\n  // Cycle_rest uchun\n  const processedEvents = cycleInput.events.map(processEvent);\n  \n  result = {\n    cycle_type: 'cycle_rest',\n    events: processedEvents\n  };\n} else {\n  result = {};\n}\n\n// Natijani qaytarish\nreturn [{ json: { result } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -576,
+        176
+      ],
+      "id": "bbfea485-7414-48d5-a3b7-b7b0528bf313",
+      "name": "Code"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1328,
+        192
+      ],
+      "id": "75bde0d4-e098-40b4-aff0-a2d5264919b2",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5.2",
+          "mode": "list",
+          "cachedResultName": "gpt-5.2"
+        },
+        "options": {
+          "frequencyPenalty": 0,
+          "presencePenalty": 0,
+          "temperature": 0,
+          "topP": 1
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        -176,
+        -128
+      ],
+      "id": "70fbd573-d739-457e-97ca-75ae32e80a23",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "rNeERiusV2ulP7X1",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "95910202-9dbf-41c7-89e8-67e4d81aef27",
+              "leftValue": "={{ $json.result.cycle_type }}",
+              "rightValue": "cycle_rest",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -368,
+        176
+      ],
+      "id": "5c8fdedc-96c4-47b3-bf30-8c5b81aee3e0",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5.2",
+          "mode": "list",
+          "cachedResultName": "gpt-5.2"
+        },
+        "options": {
+          "frequencyPenalty": 0,
+          "presencePenalty": 0,
+          "temperature": 0,
+          "topP": 1
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        -240,
+        496
+      ],
+      "id": "2b67051f-da3e-49fd-a0e2-723a72e51e41",
+      "name": "OpenAI Chat Model1",
+      "credentials": {
+        "openAiApi": {
+          "id": "rNeERiusV2ulP7X1",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $('Code').item.json.result }}",
+        "options": {
+          "systemMessage": "Siz FMCSA qoidalari bo'yicha mutaxassis agentsiz. Sizning vazifangiz faqat CYCLE (ish sikl) uchun 70/80 soat davomiylik violationini aniqlash.\n\nKIRISH FORMATI:\n{\n  \"cycle_type\": \"cycle\",\n  \"shifts\": [\n    {\n      \"shift\": [...],\n      \"shift_rest\": [...]  // BU IGNORE QILINADI\n    }\n  ]\n}\n\nTEKSHIRISH LOGIKASI:\n\n1. FAKAT 70/80 SOAT CYCLE DAVOMIYLIGI VIOLATIONINI TEKSHIRASIZ\n2. SHIFT_RESTLARNI HECH QANDAY TEKSHIRMAYSIZ\n\nHISOB-KITOBlar:\nA) CYCLE DAVOMIYLIGINI ANIQLASH (kunlar soni):\n   - birinchi_event = birinchi shiftning birinchi eventining \"dateTime\"\n   - oxirgi_event = oxirgi shiftning oxirgi eventining \"dateTime\"\n   - oxirgi_event_duration = oxirgi eventning \"durationInSeconds\"\n   - cycle_davomiyligi_sekund = (oxirgi_event - birinchi_event) + oxirgi_event_duration\n   - kunlar = cycle_davomiyligi_sekund / 86400\n\nB) MAKSIMAL RUHSAT ETILGAN ISH VAQTI:\n   - Agar kunlar >= 7: maksimal = 80 soat = 288000 sekund\n   - Agar kunlar < 7: maksimal = 70 soat = 252000 sekund\n\nC) UMUMIY ISH VAQTI:\n   - Barcha shiftlardagi barcha eventlarning \"durationInSeconds\" yig'indisi\n   - SHIFT_REST eventlarini HISOBGA OLMAYMIZ\n\nD) VIOLATION ANIQLASH:\n   - Agar umumiy ish vaqti > maksimal: VIOLATION\n   - overtime = (umumiy ish vaqti - maksimal) / 3600\n\nVIOLATION NOMI:\n- \"70_80_hour_cycle_violation\"\n\nDESCRIPTION FORMATI:\n\"Cycle davomiyligi: {kunlar} kun. Maksimal ruxsat: {maksimal/3600} soat. Haqiqiy ish vaqti: {umumiy_ish_vaqti/3600} soat. Qoida buzilishi: {maksimal/3600} soatdan {overtime} soat ortiq ishlagan.\"\n\nCHIQISH FORMATI:\n{\n  \"cycle_violations\": [\n    {\n      \"violation\": \"70_80_hour_cycle_violation\",\n      \"dateTimeStart\": \"{birinchi_event_dateTime}\",\n      \"dateTimeEnd\": \"{oxirgi_event_dateTime + oxirgi_event_duration}\",\n      \"description\": \"To'liq tafsilot\",\n      \"overtime\": number\n    }\n  ]\n}\n\nMUHIM ESKATMACHA:\n1. SHIFT_RESTLARNI HECH QANDAY TEKSHIRMAYMIZ\n2. Faqat 70/80 soat cycle davomiyligi violationini tekshiramiz\n3. Boshqa barcha violationlarni e'tiborsiz qoldiramiz\n\nKIRISH MA'LUMOTI:\n{input_data}\n\nJAVOBINGIZ FAQAT YUQORIDAGI JSON FORMATDA BO'LISHI KERAK."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        -16,
+        304
+      ],
+      "id": "83061363-c3d4-43a8-ad36-cf9b1edc2677",
+      "name": "cycle"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.result }}",
+        "options": {
+          "systemMessage": "Siz FMCSA qoidalari bo'yicha mutaxassis agentsiz. Sizning vazifangiz faqat CYCLE_REST (dam olish sikl) uchun 34 soat davomiylik violationini aniqlash.\n\nKIRISH FORMATI:\n{\n  \"cycle_type\": \"cycle_rest\",\n  \"events\": [...]\n}\n\nTEKSHIRISH LOGIKASI:\n\n1. FAKAT 34 SOAT CYCLE_REST DAVOMIYLIGI VIOLATIONINI TEKSHIRASIZ\n2. BOSHQA HECH QANDAY VIOLATION TEKSHIRMAYSIZ\n\nHISOB-KITOBlar:\nA) BARCHA EVENTLAR TO'G'RILIGINI TEKSHIRISH:\n   - Har bir event \"event\" maydoni \"DS_OFF\" yoki \"DS_SB\" bo'lishi kerak\n   - Boshqa eventlar bo'lsa, ularni hisobga olmaymiz\n\nB) UMUMIY DAVOMIYLIK HISOBLASH:\n   - birinchi_event = events[0].dateTime\n   - oxirgi_event = events[events.length-1].dateTime\n   - oxirgi_event_duration = oxirgi eventning durationInSeconds\n   - umumiy_davomiylik = (oxirgi_event - birinchi_event) + oxirgi_event_duration\n\nC) VIOLATION ANIQLASH:\n   - Agar umumiy_davomiylik < 34 soat (122400 sekund): VIOLATION\n  - umumiy_davomiylik limitdan kam bolsa overtime manfiy limitdan kop bolsa overtime musbat chiqadi.\n   - overtime = (umumiy_davomiylik - 122400)\n\nD) EVENTLAR KETMA-KETLIGI:\n   - Barcha eventlar ketma-ket kelishi kerak (vaqt oralig'i bo'lmasligi kerak)\n\nVIOLATION NOMI:\n- \"34_hour_cycle_rest_violation\"\n\nDESCRIPTION FORMATI:\n\"Cycle rest davomiyligi: {umumiy_davomiylik/3600} soat. Talab qilinadigan minimum: 34 soat. Kamlik: {overtime} soat. Faqat 'DS_OFF' va 'DS_SB' eventlari hisobga olindi.\"\n\nCHIQISH FORMATI:\n{\n  \"cycle_violations\": [\n    {\n      \"violation\": \"34_hour_cycle_rest_violation\",\n      \"dateTimeStart\": \"{birinchi_event_dateTime}\",\n      \"dateTimeEnd\": \"{oxirgi_event_dateTime + oxirgi_event_duration}\",\n      \"description\": \"To'liq tafsilot\",\n      \"overtime\": number\n    }\n  ]\n}\n\nMUHIM ESKATMACHA:\n1. Faqat 34 soat cycle_rest violationini tekshiramiz\n2. Cycle davomiyligi (70/80 soat) ni HECH QANDAY TEKSHIRMAYMIZ\n3. Boshqa barcha violationlarni e'tiborsiz qoldiramiz\n\nKIRISH MA'LUMOTI:\n{input_data}\n\nJAVOBINGIZ FAQAT YUQORIDAGI JSON FORMATDA BO'LISHI KERAK."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "0f22b56e-1946-429d-8786-ea1167d299b6",
+      "name": "cycle_rest"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        416,
+        192
+      ],
+      "id": "9ee286c9-9516-4039-9f9f-67130606758b",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = [{ json: {} }];\n\nconst inputItem = $input.first();\n\nif (inputItem && inputItem.json && inputItem.json.output) {\n  const rawText = inputItem.json.output;\n  \n  // AI javobidan JSON qismini ajratib olish\n  const extractJSON = (text) => {\n    // 1. Avvalo ```json ... ``` blokini qidirish\n    const jsonBlockMatch = text.match(/```json\\s*([\\s\\S]*?)\\s*```/i);\n    if (jsonBlockMatch) {\n      return jsonBlockMatch[1].trim();\n    }\n    \n    // 2. Oddiy ``` ... ``` blokini qidirish\n    const codeBlockMatch = text.match(/```\\s*([\\s\\S]*?)\\s*```/);\n    if (codeBlockMatch) {\n      return codeBlockMatch[1].trim();\n    }\n    \n    // 3. { bilan boshlanadigan va } bilan tugaydigan qismni qidirish\n    const jsonObjectMatch = text.match(/\\{\\s*\"cycle_violations\"[\\s\\S]*\\}/);\n    if (jsonObjectMatch) {\n      return jsonObjectMatch[0];\n    }\n    \n    // 4. Oxirgi imkoniyat: { ... } qidirish\n    const lastMatch = text.match(/\\{[\\s\\S]*\\}/);\n    return lastMatch ? lastMatch[0] : text;\n  };\n  \n  const jsonString = extractJSON(rawText);\n  \n  try {\n    const parsed = JSON.parse(jsonString);\n    \n    // Standard formatga o'tkazish\n    const violations = Array.isArray(parsed.cycle_violations) ? parsed.cycle_violations : [];\n    \n    // Har bir violationni validate qilish\n    const validatedViolations = violations.filter(violation => \n      violation && \n      typeof violation === 'object' &&\n      violation.violation &&\n      violation.dateTimeStart &&\n      violation.dateTimeEnd\n    ).map(violation => ({\n      violation: String(violation.violation || ''),\n      dateTimeStart: String(violation.dateTimeStart || ''),\n      dateTimeEnd: String(violation.dateTimeEnd || ''),\n      description: String(violation.description || ''),\n      overtime: typeof violation.overtime === 'number' ? violation.overtime : 0\n    }));\n    \n    items[0].json = {\n      cycle_violations: validatedViolations,\n     \n    };\n    \n  } catch (error) {\n    console.error(\"FMCSA JSON parse xatosi:\", error, \"\\nText:\", jsonString);\n    \n    items[0].json = {\n      cycle_violations: [],\n    \n    \n     \n     \n      raw_text_sample: rawText.substring(0, 500)\n    };\n  }\n} else {\n  items[0].json = {\n    cycle_violations: [],\n  \n   \n \n  \n  };\n}\n\nreturn { items };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        624,
+        192
+      ],
+      "id": "2284df3c-09cd-4980-a060-7a664f0ee54d",
+      "name": "Code1"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO answers (session_id, answer, position)\nVALUES ($1, $2, $3::jsonb);",
+        "options": {
+          "queryReplacement": "=[ \n{{ $node[\"When Executed by Another Workflow\"].json.message_key}},\n  // answer uchun JSON\n{{JSON.stringify($json[\"items\"][\"0\"][\"json\"] || {})}},\n{{ $item(\"0\").$node[\"When Executed by Another Workflow\"].json[\"number\"] }}\n]"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        832,
+        192
+      ],
+      "id": "35289a17-5d7c-4d8e-82eb-d9b25b15de33",
+      "name": "Execute a SQL query",
+      "credentials": {
+        "postgres": {
+          "id": "ERtVffva6VZ85RTO",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -848,
+        208
+      ],
+      "id": "aa959aed-d677-4711-967b-d29d031c4c2c",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "operation": "getTimeBetweenDates",
+        "startDate": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Start_Date', ``, 'string') }}",
+        "endDate": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('End_Date', ``, 'string') }}",
+        "units": [
+          "second"
+        ],
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dateTimeTool",
+      "typeVersion": 2,
+      "position": [
+        400,
+        -80
+      ],
+      "id": "49b31edd-01ee-4af8-a0ff-86b9cec043bd",
+      "name": "Date & Time"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.toolCalculator",
+      "typeVersion": 1,
+      "position": [
+        672,
+        -64
+      ],
+      "id": "becc2152-b5cc-4b45-8d53-f30f601e838e",
+      "name": "Calculator"
+    },
+    {
+      "parameters": {
+        "operation": "getTimeBetweenDates",
+        "startDate": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Start_Date', ``, 'string') }}",
+        "endDate": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('End_Date', ``, 'string') }}",
+        "units": [
+          "second"
+        ],
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dateTimeTool",
+      "typeVersion": 2,
+      "position": [
+        240,
+        512
+      ],
+      "id": "3c2e56d2-e4b1-4833-9878-e709efabac05",
+      "name": "Date & Time1"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.toolCalculator",
+      "typeVersion": 1,
+      "position": [
+        624,
+        464
+      ],
+      "id": "e55e6c61-d9ee-4f33-ad75-0dbae36d0ed0",
+      "name": "Calculator1"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "cycle_rest",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "cycle_rest",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "cycle",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "cycle",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "cycle_rest": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "cycle": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Code1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code1": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Date & Time": {
+      "ai_tool": [
+        [
+          {
+            "node": "cycle_rest",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculator": {
+      "ai_tool": [
+        [
+          {
+            "node": "cycle_rest",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Date & Time1": {
+      "ai_tool": [
+        [
+          {
+            "node": "cycle",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculator1": {
+      "ai_tool": [
+        [
+          {
+            "node": "cycle",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "a085c480-3fe9-4c53-afed-7daa26b14e07",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "239d7e9490a1f2644dc83e4e16c47ce7b54ec2778f4a9f546da0dddc3c42fe60"
+  },
+  "id": "FTmhLm5fEvOr5YTqtBRpe",
+  "tags": []
+}

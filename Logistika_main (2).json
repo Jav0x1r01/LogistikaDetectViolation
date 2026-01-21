@@ -1,0 +1,1063 @@
+{
+  "name": "Logistika_main",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "f539b21a-be3d-4fc5-a4ab-93a5f8ae1654",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -4080,
+        192
+      ],
+      "id": "7556196a-c459-4919-8eb1-68e8eed940d1",
+      "name": "Webhook",
+      "webhookId": "f539b21a-be3d-4fc5-a4ab-93a5f8ae1654"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://dev-new.routeeld.uz/api/auth/login",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"userName\":\"appAdmin\",\n  \"password\":\"password\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2768,
+        192
+      ],
+      "id": "74d63423-b548-4e42-9d08-ef1325b7aa6c",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "url": "=https://dev-new.routeeld.uz/api/artificial-intelligence/events?DriverId={{ $('Webhook').item.json.body.id }}&StartDate={{ $('Webhook').item.json.body.datetimestart }}&EndDate={{ $('Webhook').item.json.body.datetimeend}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "accept",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer  {{ $json.successResult.token }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2528,
+        192
+      ],
+      "id": "81fc4a57-7971-4f8d-814f-41c03269dcef",
+      "name": "HTTP Request1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1. HTTP Request1 tugunidan barcha ma'lumotlarni bir marta olamiz\nconst httpRequestData = $('HTTP Request1').first().json;\nconst cycles = httpRequestData.successResult.cycles;\n\n// 2. Code tuguniga kirib kelgan message_key ni olamiz\nconst messageKey = $input.first().json.message_key;\n\nlet n = 0;\nconst result = [];\n\n// 3. 'n' ni hisoblash (type == 0 bo'lgan ob'ektlar soni)\nfor (const item of cycles) {\n  if (item.type === 0) {\n    // Eski kodingizda len(i) yozilgan edi, bu lug'atdagi elementlar soni.\n    // Agar sizga faqat type=0 bo'lgan elementlar soni kerak bo'lsa n++ ishlating.\n    n += Object.keys(item).length; \n  }\n}\n\n// 4. Ma'lumotlarni qayta ishlash va massivga yig'ish\nfor (let i = 0; i < cycles.length; i++) {\n  if (cycles[i].type === 0) {\n    const shifts = cycles[i].shifts || [];\n    \n    for (let j = 0; j < shifts.length; j++) {\n      result.push({\n        json: {\n          \"cycles\": shifts[j],\n          \"position\": [i, j],\n          \"number\": n,\n          \"message_key\": messageKey,\n          \"data\": httpRequestData // To'liq JSON ma'lumoti\n        }\n      });\n    }\n  }\n}\n\nreturn result;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1824,
+        320
+      ],
+      "id": "30b78acb-13a1-4315-905a-209ed68b9265",
+      "name": "Code"
+    },
+    {
+      "parameters": {
+        "language": "python",
+        "pythonCode": "import secrets\nimport string\n\ndef generate_key(length=32):\n    alphabet = string.ascii_letters + string.digits\n    return ''.join(secrets.choice(alphabet) for _ in range(length))\n\nkey = generate_key()\nreturn [\n    {\n        \"json\": {\n            \"message_key\": key,\n            \"__branch\": \"code3\"\n        }\n    },\n    {\n        \"json\": {\n            \"message_key\": key,\n            \"__branch\": \"code\"\n        }\n    }\n]"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2224,
+        192
+      ],
+      "id": "0f601d57-df81-47e8-846b-ced857f9ecd2",
+      "name": "Code2"
+    },
+    {
+      "parameters": {
+        "amount": 1
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1584,
+        336
+      ],
+      "id": "28a1abeb-2b62-4366-8c63-222d157c7d8e",
+      "name": "Wait",
+      "webhookId": "06a0145e-e3d4-4f42-8dc8-7c2a02125d47"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "9889382b-389c-49e3-8bf7-2bef8164139e",
+              "leftValue": "={{ parseInt($json.total) }}",
+              "rightValue": "={{ $('Edit Fields').item.json.number * 3 + $('Edit Fields').item.json.len}}",
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1472,
+        176
+      ],
+      "id": "fe742d5e-3bc1-4ce4-ac1c-efa593c77ec5",
+      "name": "If1"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"answer\": {{ JSON.stringify($json.answer) }}\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        3392,
+        208
+      ],
+      "id": "087ec332-05a5-4be3-8936-97f39999b433",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:5678/webhook/2c7c357e-06b9-4e87-85c6-c28453fc7e54",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"message_key\": \"{{ $json.message_key}}\" \n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1200,
+        176
+      ],
+      "id": "acf300a9-73d9-46f5-aa7b-a307e66da3d0",
+      "name": "HTTP Request2"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={\n\"data\":{{ $json.data }},\n\"message_key\":\"{{ $json.message_key }}\",\n\"number\":{{ $json.number }},\n\"len\" : {{ $json.len}}\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        960,
+        176
+      ],
+      "id": "83b9a026-eb4d-4769-b7d3-9517328dc06d",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1. HTTP Request1 dan 'cycles' ma'lumotini olish\n// Eslatma: Agar 'HTTP Request1' topilmasa, node nomini to'g'riligini tekshiring\nconst data = $('HTTP Request1').first().json.successResult.cycles;\n\n// 2. Kiruvchi (input) ma'lumotdan 'message_key' ni olish\nconst message_key = $input.first().json.message_key; \n\nconst res_data = [];\nconst l = data.length;\n\n// 3. Loop orqali ma'lumotlarni shakllantirish\nfor (let i = 0; i < l; i++) {\n  res_data.push({\n    json: {\n      \"data\": data,\n      \"result\": data[i],\n      \"message_key\": message_key,\n      \"number\": i,\n      \"len\": l\n    }\n  });\n}\n\nreturn res_data;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1824,
+        16
+      ],
+      "id": "b760e895-4acc-40ca-b46f-dc7ede429d9c",
+      "name": "Code3"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        672,
+        176
+      ],
+      "id": "03f74f61-6de7-4e93-abee-d412af61de86",
+      "name": "Merge2"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={\n  \"len\":{{ $json.len }}\n}\n ",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        0,
+        0
+      ],
+      "id": "74192642-611b-4434-9942-ddfbe2218860",
+      "name": "Edit Fields3"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={\n  \"data\": {{ JSON.stringify($json.data) }} ,\n  \"message_key\": \"{{ $json.message_key }}\",\n  \"number\":{{ $json.number }}\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        0,
+        288
+      ],
+      "id": "088956a0-50f8-418b-92be-284ed3cf65dd",
+      "name": "Edit Fields4"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={\n\"data\": {{ JSON.stringify($('Edit Fields').item.json.data) }},\n\"message_key\":\"{{ $('Edit Fields').item.json.message_key }}\",\n\"number\":{{ $('Edit Fields').item.json.number }},\n\"len\":{{ $('Edit Fields').item.json.len }}\n\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1744,
+        336
+      ],
+      "id": "bffe2205-f202-4fe8-8704-adfc9a50a69b",
+      "name": "Edit Fields2"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT json_agg(answer::json) AS all_answers\nFROM answers\nWHERE session_id = '{{ $(\"Edit Fields\").item.json.message_key }}';\n\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1920,
+        160
+      ],
+      "id": "eb620650-647e-42c5-b6e0-7013cdd3fd43",
+      "name": "Execute a SQL query",
+      "credentials": {
+        "postgres": {
+          "id": "ERtVffva6VZ85RTO",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ JSON.stringify($json.all_answers )}}",
+        "options": {
+          "systemMessage": "# Identity\n\nSiz \"FMCSA Hisobot Generatori\"siz.\n\nVazifangiz: Tayyor tahlil qilingan JSON ma'lumotlarni qabul qilish va ularni **o'zbek tilida**, o'qish uchun qulay **Markdown** formatiga o'tkazish.\n\nHЕCH QANDAY HISOB-KITOB QILMANG. Faqat bor ma'lumotni chiroyli qilib ko'rsating.\n\n\n\n# Input Data\n\nSizga `all_answers` massivi keladi.\n\n\n\n# 🧹 TOZALASH QOIDALARI (Faqat ko'rinish uchun)\n\n\n\n1.  **BO'SH SHIFTLARNI YASHIRISH:**\n\n    * Agar shiftning tavsifida (`gen_description`) **\"Shift davomiyligi 0s\"** yoki **\"0 daqiqa\"** yozuvi bo'lsa, bu shiftni hisobotga **YOZMANG**. Tashlab o'tib keting.\n\n    * Faqat vaqti bor (faol) shiftlarni ko'rsating.\n\n\n\n2.  **XATOLARNI CHUROYLI QILISH:**\n\n    * `violations` ichidagi har bir xatoni ro'yxat shaklida yozing.\n\n    * Agar `violation`: \"30_min_rest\" bo'lsa -> \"🔴 30 daqiqalik tanaffus qoidasi\".\n\n    * Agar `violation`: \"pti\" bo'lsa -> \"🔴 Haydashdan oldingi tekshiruv (PTI)\".\n\n    * Agar `violation`: \"data_quality\" bo'lsa -> \"⚠️ Ma'lumot sifati xatosi (JSON)\".\n\n\n\n3.  **STATUS:**\n\n    * Agar xatolar bo'lsa -> **🔴 Kritik Xato**\n\n    * Agar xatolar bo'lmasa -> **✅ Toza**\n\n\n\n# Output Format (Markdown)\n\n\n\nJavobni quyidagi shablonda qaytaring:\n\n\n\n### 📊 Tahlil Hisoboti\n\n\n\n**Shift [Raqam]:**\n\n* **Holat:** Split Sleeper: [Bor/Yo'q]\n\n* **Umumiy Vaqt:** [Shift davomiyligini yozing]\n\n* **Sof Haydash:** [Umumiy driving vaqtini yozing]\n\n* **Status:** [Status Nomi]\n\n* **Tafsilotlar:**\n\n    *(Agar xato bo'lmasa: \"Qoidabuzarliklar aniqlanmadi.\")*\n\n    *(Agar xato bo'lsa, ro'yxat qiling:)*\n\n    * [Xato Nomi]\n\n      └─ 📝 Izoh: [Description ichidagi matn]\n\n\n\n---\n\n\n\n### 💡 Xulosa\n\n*(Bor xatolarga qarab 1 ta umumiy gap yozing)*"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        2304,
+        160
+      ],
+      "id": "44e1fc6c-81e6-436c-b3fe-0889e1a980c0",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5.2",
+          "mode": "list",
+          "cachedResultName": "gpt-5.2"
+        },
+        "options": {
+          "temperature": 0,
+          "topP": 0.1
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        2304,
+        384
+      ],
+      "id": "e623097a-ea58-42c6-8d79-2b5228f41fb8",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "rNeERiusV2ulP7X1",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.body.message }}",
+        "options": {
+          "systemMessage": "# Identity\nSiz Unione ELD logistika kompaniyasi uchun TORA team tomonidan ishlab chiqilgan maxsus AI agentsiz. Sizning asosiy maqsadingiz logistlarga yordam berishdir.\n\n# Chat History Usage (Xotira bilan ishlash)\nSizga taqdim etilgan suhbatlar tarixidan (Chat History) foydalaning. Agar foydalanuvchi \"U qayerda?\", \"Rahbari kim?\", \"Yuqoridagi haydovchi haqida gapir\" kabi savollar bersa, tarixdan kim yoki nima haqida gap ketayotganini aniqlab javob bering.\n\n# Knowledge Base (Ma'lumotlar bazasi)\nSiz quyidagi faktlarga tayangan holda javob berishingiz kerak:\n- **Kompaniya:** Unione ELD.\n- **Faoliyat hududi:** Asosan Amerika (USA) hududidagi driverlar bilan ishlaydi.\n- **Tashkil topgan yil:** 2020-yil.\n- **Xodimlar soni:** 100 ga yaqin.\n- **Rahbariyat:** Kompaniya egasi — Palonchayev Psitoncha.\n- **Manzil:** Toshkent sh., Mirzo Ulug'bek tumani, \"Aristokrat\" restoraning yuqori qismi, 5-qavat.\n- **Dasturchi:** Sizni Mamatayev Javoxir ishlab chiqqan.\n\n# Logic & Routing (Mantiq va Yo'naltirish)\nSizga kelgan savollarni uch toifaga ajrating va shunga mos JSON qaytaring:\n\n1. **Driver va Tahlil savollari (Handover):**\n   - Foydalanuvchi driver xatolarini topishni, loglarni tekshirishni yoki ma'lumot tahlilini so'rasa:\n   - **Output:** {\"answer\": null, \"next\": true}\n\n2. **Umumiy va Kompaniya savollari (General Info):**\n   - Kompaniya, manzillar yoki logistika bo'yicha umumiy savollarga:\n   - **Output:** {\"answer\": \"Aniq va lo'nda javob...\", \"next\": false}\n\n3. **Mavzudan tashqari savollar (Off-topic):**\n   - Logistika yoki Unione ELDga aloqador bo'lmagan savollarga:\n   - **Output:** {\"answer\": \"Mening imkoniyatlarim cheklangan.\", \"next\": false}\n\n# Output Format (Qat'iy)\nJavob faqat va faqat quyidagi JSON formatida bo'lishi shart. Hech qanday qo'shimcha matn yoki Markdown belgilari (masalan ```json) bo'lmasin.\n\n{\n  \"answer\": \"String formatidagi javob yoki null\",\n  \"next\": true yoki false\n}\n# Chat History\nQuyida foydalanuvchi bilan bo'lgan oldingi suhbatlar tarixi berilgan. Savollarga javob berishda ushbu tarixga tayanishingiz shart:\n{{ $node[\"Simple Memory\"].json }}"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        -3792,
+        192
+      ],
+      "id": "54d4a67a-20c2-4f06-8a69-e5aecac84a66",
+      "name": "AI Agent1"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5.2",
+          "mode": "list",
+          "cachedResultName": "gpt-5.2"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        -3792,
+        368
+      ],
+      "id": "f26b4a16-da38-404a-b3cc-a82c781e74cc",
+      "name": "OpenAI Chat Model1",
+      "credentials": {
+        "openAiApi": {
+          "id": "rNeERiusV2ulP7X1",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "bea7c658-d8e8-4cc7-8c85-fffeef1381a3",
+              "leftValue": "={{ $json.next }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -3120,
+        192
+      ],
+      "id": "f5d1678f-cdb6-451b-9d84-4a224c82f6a6",
+      "name": "If3"
+    },
+    {
+      "parameters": {
+        "jsCode": "const inputItem = $input.first();\nlet rawText = inputItem.json.output || \"\";\n\ntry {\n  // Matn ichidan faqat { ... } qismini qidirib topish\n  const jsonMatch = rawText.match(/\\{[\\s\\S]*\\}/);\n  \n  if (jsonMatch) {\n    const cleanJson = JSON.parse(jsonMatch[0]);\n    return {\n      json: cleanJson\n    };\n  } else {\n    throw new Error(\"JSON topilmadi\");\n  }\n} catch (error) {\n  return {\n    json: {\n      answer: \"Xatolik yuz berdi: \" + rawText,\n      next: false,\n      error: \"JSON parse failed\"\n    }\n  };\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3392,
+        192
+      ],
+      "id": "2b5d6463-2855-4db3-9e30-db0c0a57ecc2",
+      "name": "Code4"
+    },
+    {
+      "parameters": {
+        "jsCode": "let finalAnswer = \"\";\n\ntry {\n  const inputData = $input.first().json;\n  \n  // 1-holat: Agar ma'lumot 'answer' ichida kelsa (JSON parse bo'lgan bo'lsa)\n  if (inputData.answer) {\n    finalAnswer = inputData.answer;\n  } \n  // 2-holat: Agar ma'lumot to'g'ridan-to'g'ri 'output'da bo'lsa\n  else if (inputData.output) {\n    finalAnswer = inputData.output;\n  }\n  // 3-holat: Agar massiv ichida kelsa\n  else if (inputData.items && inputData.items[0].json.answer) {\n    finalAnswer = inputData.items[0].json.answer;\n  }\n} catch (e) {\n  finalAnswer = \"Xatolik: Javobni shakllantirishda muammo bo'ldi.\";\n}\n\nreturn {\n  answer: finalAnswer\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2992,
+        208
+      ],
+      "id": "80c178a8-f0f3-4ec5-99bc-e7da7617213a",
+      "name": "Code5"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dateTimeTool",
+      "typeVersion": 2,
+      "position": [
+        -3520,
+        512
+      ],
+      "id": "dbcdd972-782d-48e9-a007-3e1d46665348",
+      "name": "Date & Time"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -1616,
+        320
+      ],
+      "id": "ea57c12a-e259-4ffd-a139-7f1ac7ff689a",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "name": "Replace Me",
+      "typeVersion": 1,
+      "position": [
+        -272,
+        384
+      ],
+      "id": "10cf213e-b843-4eb1-b1eb-a1399de83f0f"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "u_FC3-EdCm3u4uUcfmyUQ",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/u_FC3-EdCm3u4uUcfmyUQ",
+          "cachedResultName": "split_shift"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        -1136,
+        544
+      ],
+      "id": "4743b87e-2711-49e6-b8c4-b27a70ca61d0",
+      "name": "Execute Workflow2"
+    },
+    {
+      "parameters": {
+        "numberInputs": 3
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -656,
+        368
+      ],
+      "id": "9e0a55d5-8201-4931-84e2-5537aa74ed07",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -1616,
+        16
+      ],
+      "id": "69ecd388-3952-4a2d-8944-34b00c2ab32e",
+      "name": "Loop Over Items1"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "name": "Replace Me1",
+      "typeVersion": 1,
+      "position": [
+        -1088,
+        32
+      ],
+      "id": "264061f0-a13f-47b7-b965-3f7624f877b2"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "FTmhLm5fEvOr5YTqtBRpe",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/FTmhLm5fEvOr5YTqtBRpe",
+          "cachedResultName": "cycle"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        -1328,
+        32
+      ],
+      "id": "ca8b947b-a425-4a43-80f4-a87a658f5192",
+      "name": "Execute Workflow3"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "WFOxIF4WGuTubHprsa0fb",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/WFOxIF4WGuTubHprsa0fb",
+          "cachedResultName": "overtime"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        -1136,
+        400
+      ],
+      "id": "b7899260-56d0-4ee9-a8c7-2d4aafd398bf",
+      "name": "Execute Workflow1"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "GdRUvd6g5TKtvoMeYAkiv",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/GdRUvd6g5TKtvoMeYAkiv",
+          "cachedResultName": "detect_violation"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        -1136,
+        272
+      ],
+      "id": "fe888997-dd42-4062-ab3d-fd4c8c2f32e8",
+      "name": "Call 'detect_violation'"
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $json.body.id }}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        -3744,
+        608
+      ],
+      "id": "90813634-2f69-417a-bf72-357ab48781a5",
+      "name": "Simple Memory"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request1": {
+      "main": [
+        [
+          {
+            "node": "Code2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code2": {
+      "main": [
+        [
+          {
+            "node": "Code3",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If1": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request2": {
+      "main": [
+        [
+          {
+            "node": "If1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code3": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge2": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields3": {
+      "main": [
+        [
+          {
+            "node": "Merge2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields4": {
+      "main": [
+        [
+          {
+            "node": "Merge2",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Edit Fields2": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Code5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent1": {
+      "main": [
+        [
+          {
+            "node": "Code4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If3": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code4": {
+      "main": [
+        [
+          {
+            "node": "If3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code5": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Date & Time": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields4",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Call 'detect_violation'",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Execute Workflow2",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Execute Workflow1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Replace Me": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Workflow2": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Replace Me",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items1": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields3",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Execute Workflow3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Replace Me1": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Workflow3": {
+      "main": [
+        [
+          {
+            "node": "Replace Me1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Workflow1": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Call 'detect_violation'": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "e324d668-1d45-4f0a-94a5-cc4fe2b191a7",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "239d7e9490a1f2644dc83e4e16c47ce7b54ec2778f4a9f546da0dddc3c42fe60"
+  },
+  "id": "wwGyA6AWrk6qLn1P30sBa",
+  "tags": []
+}

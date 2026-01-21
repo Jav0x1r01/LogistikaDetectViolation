@@ -1,0 +1,412 @@
+{
+  "name": "overtime",
+  "nodes": [
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ JSON.stringify($json[\"question\"] ) }}",
+        "options": {
+          "systemMessage": "ROLE:\n-Sen FMCSA qoidalari asosida driver malumotlarini tahlil qiladigan va undagi overtime qiymatlarini aniqlaydigan ai agentsan.\n- Sening asosiy vazifang overtime va gen_overtime qiymatlarini aniqlash. \n-----------------------------------------------------------------------------------------\nKIRISH QIYMATLARI:\n\n- Kiruvchi malumotlar quydagicha:\n  \n\"shift_rest\": \n[\n{\"dateTime\": \"2025-12-01T18:15:17\",\n\"durationInSeconds\": 1321201,\n\"event\": \"DS_SB\",\n\"eventDescription\": \"Uxlayapti yoki dam\",\n\"longitude\": -96.679847,\n\"latitude\": 32.616218,\n\"calculatedLocation\": \"3.0 mi SE from Hutchins, TX\",\n\"manualLocation\": \"\",\n\"totalEngineHours\": 0,\n\"totalVehicleMiles\": 171652,\n \"originalEventType\": 1,\n \"originalEventCode\": 2 },\n...,\n]\n- Yuoqrida faqat bitta event korsatilgan kirishda shunga oxshagan koplab eventlar bolishi mumkin.\n\n-----------------------------------------------------------------------------------------------\n\nSHIFTDAGI VAQT BOICHA QOIDALAR:\n- shiftning umumiy davomiyligi kamida 36000 s bolishi kerak.\n- shidt davomiyligini aniqlsh uchun barcha eventlardagi durationInSeconds qiymatlarni qoshib chiqish kerak.\n\n-----------------------------------------------------------------------------------------------\nOVERTIME HISOBLASH:\novertime = shift umumiy davomiyligi ayiramiz 36000 \nMisol:  bizning holatda \"durationInSeconds\": 1321201 ga teng overtime hisoblash uchun 1321201  - 36000  = 1285201 chiqishi kerak .\n---------------------------------------------------------------------------------------------\nUMUMIY QOIDALAR:\n- shift orasida eventlarning eventType qiymati DS_ON yoki DS_D  dan tashqari har qanday holat bolishi mumkin.\n- eventType qiymati DS_ON yoki DS_D lardan biri kelgan event bolsa shifr_rest davomiyligi shu yergacha deb hisoblanadi, yani DS_D va DS_ON lardan biri kelgan eventgacha.\n- eventlar kop bolsa har bir eventning durationInSeconds qiymatlari qoshilib umumiy vaqt hisoblanadi va undan 36000  ayirish orqali overtime hioblanadi. \n\n----------------------------------------------------------------------------------------------\nCHIQISH NATIJALARI:\n\n- natija faqat jsonda chiqishi kerak. \n\n{\n\"overtimes\":[\n\"overtime\" : <hisoblangan vaqt>\n\"type\": 0,\n\"description\": <overtime qanday hisoblangani>],\n\"gen_overtime\" : {},\n\"gen_description\":{},\n\"shift_type\" : \"shift_rest\"\n}\n----------------------------------------------------------------------------------------------\nMALUMOT KELMAY QOLGAN HOLAT UCHUN CHIQISH:\nchiqish jsonda \n{\n\"overtimes\": [],\n\"gen_overtime\":{},\n\"gen_description\":{},\nshift_type\" : \"shift_rest\"\n}\nchiqadi.\n-------------------------------------------------------------------------------------------\nQILISH SHART BOLGAN MUHIM QOIDALAR:\n- chiqish faqat jsonda bolishi kerak ortiqcha textlar chiqmasin. \n- vaqt oraliqlarini hisoblash uchun Date & Time1 tooldan foydalan.\n-  har qanday hisob kitob uchun Calculator1 tooldan foydalan."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "2d4a37fc-f1dd-40b1-8978-ef6442512506",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n Function node\n\n// Kirish ma'lumotlari\nconst inputBody = $('When Executed by Another Workflow').all()[0].json.cycles;\n// n8n Function node\n\n// type: 1 => shift_rest\n// type: 0 => shift\nconst type = inputBody.type;\nconst events = inputBody.events || [];\n\n// Event mapping obyekti\nconst eventMapping = {\n    1: {\n        1: [\"DS_OFF\", \"Ishdan tashqari\"],\n        2: [\"DS_SB\", \"Uxlayapti yoki dam\"],\n        3: [\"DS_D\", \"Haydash jarayonida\"],\n        4: [\"DS_ON\", \"Ish holati, haydamaydi\"],\n    },\n    2: {\n        1: [\"INTER_NORMAL_PRECISION\", \"To‘liq joylashuv\"],\n        2: [\"INTER_REDUCED_PRECISION\", \"Noaniq joylashuv\"],\n    },\n    3: {\n        1: [\"PS_USE\", \"Shaxsiy foydalanish\"],\n        2: [\"YRD_MOVE\", \"Yard ichida harakat\"],\n        0: [\"PS_CLEAR\", \"Shaxsiy rejim bekor\"],\n    },\n    4: {\n        1: [\"DR_CERT_1\", \"1-tasdiqlash\"],\n        2: [\"DR_CERT_2\", \"2-tasdiqlash\"],\n        3: [\"DR_CERT_3\", \"3-tasdiqlash\"],\n        4: [\"DR_CERT_4\", \"4-tasdiqlash\"],\n        5: [\"DR_CERT_5\", \"5-tasdiqlash\"],\n        6: [\"DR_CERT_6\", \"6-tasdiqlash\"],\n        7: [\"DR_CERT_7\", \"7-tasdiqlash\"],\n        8: [\"DR_CERT_8\", \"8-tasdiqlash\"],\n        9: [\"DR_CERT_9\", \"9-tasdiqlash\"],\n    },\n    5: {\n        1: [\"DR_LOGIN\", \"Haydovchi tizimga kirdi\"],\n        2: [\"DR_LOGOUT\", \"Haydovchi tizimdan chiqdi\"],\n    },\n    6: {\n        1: [\"ENG_UP_NORMAL\", \"Motor ishga tushdi (GPS aniq)\"],\n        2: [\"ENG_UP_REDUCED\", \"Motor ishga tushdi (GPS noaniq)\"],\n        3: [\"ENG_DOWN_NORMAL\", \"Motor o‘chirildi (GPS aniq)\"],\n        4: [\"ENG_DOWN_REDUCED\", \"Motor o‘chirildi (GPS noaniq)\"],\n    },\n    7: {\n        1: [\"MALF_LOGGED\", \"Nosozlik qayd etildi\"],\n        2: [\"MALF_CLEARED\", \"Nosozlik bartaraf qilindi\"],\n        3: [\"DIAG_LOGGED\", \"Diagnostika xatosi bor\"],\n        4: [\"DIAG_CLEARED\", \"Diagnostika tuzatildi\"],\n    }\n};\n\n// Eventlarni boyitish\nconst processedEvents = events.map(ev => {\n    const type = ev.eventType;\n    const code = ev.eventCode;\n\n    let eventName = \"\";\n    let eventDesc = \"\";\n\n    if (eventMapping[type] && eventMapping[type][code]) {\n        eventName = eventMapping[type][code][0];\n        eventDesc = eventMapping[type][code][1];\n    } else {\n        eventName = ev.eventCodeDescription || `UNKNOWN_${type}_${code}`;\n        eventDesc = ev.eventTypeDescription || \"Noma'lum holat\";\n    }\n\n    return {\n        dateTime: ev.dateTime,\n        durationInSeconds: ev.durationInSeconds,\n        event: eventName,\n        eventDescription: eventDesc,\n        longitude: ev.longitude,\n        latitude: ev.latitude,\n        calculatedLocation: ev.calculatedLocation,\n        manualLocation: ev.manualLocation || '',\n        totalEngineHours: ev.totalEngineHours || 0,\n        totalVehicleMiles: ev.totalVehicleMiles,\n        originalEventType: type,\n        originalEventCode: code\n    };\n});\n\n// Natija obyekt nomi type asosida tanlanadi\nconst outputKey = type === 1 ? \"shift_rest\" : \"shift\";\n\n// Yakuniy chiqish\nreturn {\n  \"question\":{\n    [outputKey]: processedEvents}\n};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -560,
+        96
+      ],
+      "id": "a9ff7a1b-224c-439d-b554-782d439ace1e",
+      "name": "Code"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = [{ json: {} }];\nconst input = $input.first();\n\nif (!input?.json?.output) {\n  items[0].json = { \n    answer: { error: \"output maydoni topilmadi\" }\n  };\n  return items;\n}\n\ntry {\n  let raw = input.json.output;\n  \n  // 1️⃣ Agar string bo'lsa — tozalash\n  if (typeof raw === 'string') {\n    raw = raw.trim();\n    \n    // ```json yoki ``` bilan o'ralgan bo'lsa — olib tashla\n    if (raw.startsWith('```')) {\n      raw = raw\n        .replace(/^```json\\s*/i, '')\n        .replace(/^```\\s*/i, '')\n        .replace(/\\s*```$/g, '')\n        .trim();\n    }\n    \n    // Agar \" bilan o'ralgan ichma-ich JSON bo'lsa\n    if (raw.startsWith('\"') && raw.endsWith('\"')) {\n      raw = raw.slice(1, -1); // Tashqi qo'shtirnoqlarni olib tashlash\n      raw = raw.replace(/\\\\n/g, '\\n').replace(/\\\\\"/g, '\"'); // Escape'larni dekodlash\n    }\n  }\n  \n  let parsed;\n  \n  // 2️⃣ Parse qilish\n  try {\n    parsed = JSON.parse(raw);\n  } catch {\n    // Agar ichma-ich JSON bo'lsa — ikkinchi marta parse\n    try {\n      parsed = JSON.parse(JSON.parse(raw));\n    } catch {\n      // Agar hali ham ishlamasa — backslash'larni tozalash\n      const cleaned = raw.replace(/\\\\/g, '');\n      parsed = JSON.parse(cleaned);\n    }\n  }\n  \n  // 3️⃣ Validatsiya\n  if (!parsed || typeof parsed !== 'object') {\n    throw new Error(\"JSON obyekt emas\");\n  }\n  \n  if (!Array.isArray(parsed.overtimes)) {\n    throw new Error(\"overtimes array topilmadi\");\n  }\n  \n  // 4️⃣ gen_overtime ni to'g'ri parse qilish\n  let genOvertime = 0;\n  \n  if (parsed.gen_overtime !== undefined && parsed.gen_overtime !== null) {\n    if (typeof parsed.gen_overtime === 'number') {\n      genOvertime = parsed.gen_overtime;\n    } else if (typeof parsed.gen_overtime === 'object' && Object.keys(parsed.gen_overtime).length === 0) {\n      genOvertime = 0; // Bo'sh obyekt bo'lsa 0\n    }\n  }\n  \n  // 5️⃣ gen_description ni to'g'ri parse qilish\n  let genDescription = null;\n  \n  if (parsed.gen_description !== undefined && parsed.gen_description !== null) {\n    if (typeof parsed.gen_description === 'string') {\n      genDescription = parsed.gen_description;\n    } else if (typeof parsed.gen_description === 'object' && Object.keys(parsed.gen_description).length === 0) {\n      genDescription = null; // Bo'sh obyekt bo'lsa null\n    }\n  }\n  \n  // 6️⃣ Natijani \"answer\" ichiga joylashtirish\n  items[0].json = {\n    answer: {\n      overtimes: parsed.overtimes,\n      gen_overtime: genOvertime,\n      gen_description: genDescription,\n      shift_type: parsed.shift_type || null\n    }\n  };\n  \n} catch (err) {\n  items[0].json = {\n    answer: {\n      error: \"JSON parse xatosi\",\n      message: err.message,\n      raw_output: input.json.output\n    }\n  };\n}\n\nreturn items;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        384,
+        144
+      ],
+      "id": "4cb96d44-ce94-49e1-a120-5df376583617",
+      "name": "Code1"
+    },
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -656,
+        96
+      ],
+      "id": "def9854d-8b04-443c-bbd5-da80c387d08c",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO answers (session_id, answer, position)\nVALUES ($1, $2::jsonb, $3);",
+        "options": {
+          "queryReplacement": "={{$node[\"When Executed by Another Workflow\"].json.message_key}}\n{{JSON.stringify( $json[\"answer\"] || {})}}\n{{ $node[\"When Executed by Another Workflow\"].json[\"position\"] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        544,
+        144
+      ],
+      "id": "08bf2d6c-077f-406c-a422-4b7a7cc78a5a",
+      "name": "Execute a SQL query",
+      "credentials": {
+        "postgres": {
+          "id": "ERtVffva6VZ85RTO",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5.2",
+          "mode": "list",
+          "cachedResultName": "gpt-5.2"
+        },
+        "options": {
+          "frequencyPenalty": 0,
+          "presencePenalty": 0,
+          "temperature": 0,
+          "topP": 1
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        -208,
+        -96
+      ],
+      "id": "e811cacc-e573-42b0-a76a-55ab661b3ca7",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "rNeERiusV2ulP7X1",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "118e6430-9f12-4799-9007-c3f77981c4b8",
+              "leftValue": "={{ 'shift_rest' in $json.question }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -336,
+        96
+      ],
+      "id": "dcebe970-daab-4efa-9f4c-030db7b10363",
+      "name": "If"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.toolCalculator",
+      "typeVersion": 1,
+      "position": [
+        448,
+        -112
+      ],
+      "id": "6787fe26-316d-4862-ad97-74f3454538ab",
+      "name": "Calculator"
+    },
+    {
+      "parameters": {
+        "operation": "getTimeBetweenDates",
+        "startDate": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Start_Date', ``, 'string') }}",
+        "endDate": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('End_Date', ``, 'string') }}",
+        "units": [
+          "second"
+        ],
+        "outputFieldName": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Output_Field_Name', ``, 'string') }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dateTimeTool",
+      "typeVersion": 2,
+      "position": [
+        240,
+        -128
+      ],
+      "id": "84ccc5e1-e818-4d32-907e-d93f5a3e44b7",
+      "name": "Date & Time"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ JSON.stringify($json[\"question\"] ) }}",
+        "options": {
+          "systemMessage": "Sen FMCSA qoidalari asosida shift ma’lumotlaridan ortiqcha vaqtlarni hisoblaydigan agent sifatida ishlaysan. Sening asosiy vazifang kiruvchi ma’lumotlarni tahlil qilib, undan overtime va gen_overtime larni hisoblash. Overtime tushunchasini quyida tushuntiraman.\n\nKIRUVCHI QIYMATLAR:\n\n{\n  \"shift\": [\n    {\n      \"dateTime\": \"2025-12-19T05:30:19\",\n      \"durationInSeconds\": 901,\n      \"event\": \"DS_ON\",\n      \"eventDescription\": \"Ish holati, haydamaydi\",\n      \"longitude\": -96.679847,\n      \"latitude\": 32.616218,\n      \"calculatedLocation\": \"3 mi SE from Hutchins, TX\",\n      \"manualLocation\": \"\",\n      \"totalEngineHours\": 0,\n      \"totalVehicleMiles\": 171652,\n      \"originalEventType\": 1,\n      \"originalEventCode\": 4\n    },\n    ...\n  ]\n}\n\n----------------------------------------------------------------\nKIRUVCHI QIYMATLAR HAQIDA TUSHINCHA:\n- dateTime qiymati -> event boshlanish vaqti,\n- durationInSeconds -> event davomiyligi,\n- event -> event kodi,\n- eventDescription -> event haqida qisqacha ma’lumot,\n- longitude va latitude -> haydovchi joylashuvi,\n- calculatedLocation -> joylashgan shahar.\n\n--------------------------------------------------------------------\nSHIFTDAGI VAQT QOIDALARI:\n- Shift_davomiyligi 14 soatdan (50400 s) oshmasligi kerak.\n- Driving umumiy davomiyligi 11 soatdan (39600 s) oshmasligi kerak.\n- PTI davomiyligi eng kamida 15 daqiqa (900 s).\n- Break davomiyligi eng kamida 30 daqiqa (1800 s).\n- Bir eventdagi driving davomiyligi 8 soatdan (28800 s) oshmasligi kerak.\n\n----------------------------------------------------------------------------\n\nVAQTLARNI HISOBLASH QOIDALARI:\n- Shift davomiyligini hisoblash: oxirgi event dateTime - birinchi event dateTime, natija sekundlarda.\n- Driving umumiy davomiyligi: shiftdagi barcha DS_D eventlarning durationInSeconds yig’indisi.\n- PTI: birinchi event DS_ON bo‘lsa, uning durationInSeconds 0, aks holda 0.\n- Break: DS_D lar orasidagi har qanday event durationInSeconds larining yig’indisi, eng kattasi.\n- Bir eventdagi driving davomiyligi: har bir DS_D event durationInSeconds, eng ko‘p 28800 s, ortiqchi hisoblanadi.\n\n-------------------------------------------------------------------------------\nOVERTIME QIYMATLARNI HISOBLASH:\n- Eventlar 2 typega bo‘linadi:\n  - type 0: belgilangan vaqtdan oshib ketsa (shift davomiyligi, driving davomiyligi, bir eventdagi driving davomiyligi)\n  - type 1: belgilangan vaqtdan kam bo‘lsa (PTI, Break)\n- Type 0: belgilangan vaqt - hisoblangan vaqt\n- Type 1: hisoblangan vaqt - belgilangan vaqt\n- Driving bir nechta bo‘lsa, faqat birinchi uchun manfiy chiqishi mumkin, qolganlar faqat musbat bo‘ladi.\n\n-------------------------------------------------------------------------------\nGEN_OVERTIME HISOBLASH:\n- gen_overtime = shift davomiyligi - driving umumiy davomiyligi - PTI - Break\n- Agar qiymat <0 bo‘lsa, 0 ga teng\n- Natija sekundlarda\n\n-------------------------------------------------------------------------------\nCHIQISH QOIDALARI:\n- Faqat JSON formatda chiqishi kerak\n- Format:\n\n{\n  \"overtimes\":[\n    {\n      \"event\": \"<event_name>\",\n      \"type\": 0|1|null,\n      \"overtime\": <integer_in_seconds>,\n      \"description\": \"to‘liq hisoblash tushuntirishi\"\n    },\n    ...\n  ],\n  \"gen_overtime\": <integer>,\n  \"gen_description\": \"<gen_overtime qanday hisoblanganligi>\",\n  \"shift_type\":  \"shift\"\n}\n\n- Agar shift bo‘sh bo‘lsa yoki dateTime/durationInSeconds yo‘q bo‘lsa:\n\n{\n  \"overtimes\": [],\n  \"gen_overtime\": {},\n  \"gen_description\": {},\n  \"shift_type  \": \"shift\"\n}\n\n-------------------------------------------------------------------------------\nENG OXIRGI QOIDALAR:\n- Overtime qiymati manfiy yoki musbat bo‘lishi mumkin faqat bir nechta driving bo‘lgan holatdan tashqari\n- Hisob-kitob uchun **majburiy Calculator va Date & Time toollardan foydalanish**\n- Description va izohlar ixtiyoriy, lekin misol formatida bo‘lishi mumkin\n- Qo‘shimcha matn chiqarmang, faqat JSON\n- **FALLBACK QOIDA**: agar hisoblash uchun kerakli qiymat yo‘q bo‘lsa yoki tool ishlamasa, JSON bo‘sh shaklda chiqadi:\n\n{\n  \"overtimes\": [],\n  \"gen_overtime\": {},\n  \"gen_description\": {},\n  \"shift_type\":\" shift\"\n}\n"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -32,
+        320
+      ],
+      "id": "86a9763d-8ffa-4e7b-948a-5001821166f4",
+      "name": "AI Agent1"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5.2",
+          "mode": "list",
+          "cachedResultName": "gpt-5.2"
+        },
+        "builtInTools": {},
+        "options": {
+          "frequencyPenalty": 0,
+          "presencePenalty": 0,
+          "temperature": 0,
+          "topP": 1
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        -240,
+        576
+      ],
+      "id": "cbdffe00-5d16-46cd-b44f-427eee47dddc",
+      "name": "OpenAI Chat Model1",
+      "credentials": {
+        "openAiApi": {
+          "id": "rNeERiusV2ulP7X1",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.toolCalculator",
+      "typeVersion": 1,
+      "position": [
+        432,
+        528
+      ],
+      "id": "fa320b6d-1cd9-406e-a3b4-70fe2baa26ff",
+      "name": "Calculator1"
+    },
+    {
+      "parameters": {
+        "operation": "getTimeBetweenDates",
+        "startDate": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Start_Date', ``, 'string') }}",
+        "endDate": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('End_Date', ``, 'string') }}",
+        "units": [
+          "second"
+        ],
+        "outputFieldName": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Output_Field_Name', ``, 'string') }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dateTimeTool",
+      "typeVersion": 2,
+      "position": [
+        160,
+        544
+      ],
+      "id": "8278be75-6c88-45be-9927-001dc27328c3",
+      "name": "Date & Time1"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Code1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code1": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AI Agent1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculator": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Date & Time": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent1": {
+      "main": [
+        [
+          {
+            "node": "Code1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculator1": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Date & Time1": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "f2d051c1-97ad-4066-81f8-9d840dc098fd",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "239d7e9490a1f2644dc83e4e16c47ce7b54ec2778f4a9f546da0dddc3c42fe60"
+  },
+  "id": "WFOxIF4WGuTubHprsa0fb",
+  "tags": []
+}
