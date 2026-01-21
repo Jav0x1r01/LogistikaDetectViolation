@@ -1,0 +1,1258 @@
+{
+  "name": "Logistika_main_yangi",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "80626a4d-6265-4878-af7e-7fc6b1581bab",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -4080,
+        192
+      ],
+      "id": "0f76b824-6d6e-4051-9a95-8e9814fae546",
+      "name": "Webhook",
+      "webhookId": "80626a4d-6265-4878-af7e-7fc6b1581bab"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://dev-new.routeeld.uz/api/auth/login",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"userName\":\"appAdmin\",\n  \"password\":\"password\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2768,
+        176
+      ],
+      "id": "476c6f66-0fcd-413b-aa76-edb3695383eb",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "url": "=https://dev-new.routeeld.uz/api/artificial-intelligence/events?DriverId={{ $('Webhook').item.json.body.id }}&StartTime={{ $('Webhook').item.json.body.datetimestart }}&EndTime={{ $('Webhook').item.json.body.datetimeend}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "accept",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer  {{ $json.successResult.token }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2592,
+        176
+      ],
+      "id": "8cf23e0b-64cf-4b45-ba4d-a1ba52c69252",
+      "name": "HTTP Request1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// === 1. Data manbasini aniqlash ===\n\n// HTTP Request1 node'ining birinchi itemidagi successResult.cycles ni olish\nconst data = $('HTTP Request1').first().json.successResult.cycles;\n\n// Joriy node inputidagi birinchi itemdan message_key ni olish\nconst message_key = $input.first().json.message_key;\n\nlet n = 0;\nconst result = [];\n\n// type == 0 bo'lgan elementlar sonini hisoblash\nfor (const item of data) {\n\tif (item.type === 0) {\n\t\tn += item.shifts?.length ?? 0;\n\t}\n}\nconst step = $input.first().json.step\nconst sessionId = $input.first().json.sessionId\nconst tabId = $input.first().json.tabId\n\n// type == 0 bo'lgan cycles ichidagi shifts'larni yoyish\nfor (let i = 0; i < data.length; i++) {\n\tif (data[i].type === 0) {\n\t\tfor (let j = 0; j < data[i].shifts.length; j++) {\n\t\t\tresult.push({\n\t\t\t\tcycles: data[i].shifts[j],\n\t\t\t\tposition: [i, j],\n\t\t\t\tnumber: n,\n\t\t\t\tmessage_key,\n              sessionId : sessionId,\n              tabId : tabId,\n                step:step,\n\t\t\t\tdata: data\n\t\t\t});\n\t\t}\n\t}\n}\n\n// n8n kutadigan formatda qaytarish\nreturn result.map((item) => ({\n\tjson: item,\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1616,
+        320
+      ],
+      "id": "a2997ed8-3e0b-46f9-8bce-72734c991c5d",
+      "name": "Code"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Tasodifiy kalit generatsiya qilish funksiyasi\nfunction generateKey(length = 32) {\n\tconst alphabet =\n\t\t'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';\n\tlet result = '';\n\tfor (let i = 0; i < length; i++) {\n\t\tconst index = Math.floor(Math.random() * alphabet.length);\n\t\tresult += alphabet[index];\n\t}\n\treturn result;\n}\n\nconst key = generateKey();\nconst step = $('Code4').first().json.items[0].json.step\nconst sessionId = $input.first().json.successResult.sessionId\nconst tabId = $input.first().json.successResult.tabId\nreturn [\n\t{\n\t\tjson: {\n\t\t\tmessage_key: key,\n            step: step,\n             sessionId:sessionId,\n          tabId:tabId,\n\t\t}\n\t}\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2416,
+        176
+      ],
+      "id": "18aa7fd8-0c77-4a4b-9413-189a623f7aef",
+      "name": "Code2"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"answer\": {{ JSON.stringify($json.cycleInput) }}\n} ",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        4000,
+        224
+      ],
+      "id": "9704083d-3cdd-4a84-a531-9da1a4b204d2",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={\n\"data\":{{ JSON.stringify($json.data) }},\n\"message_key\":\"{{ $json.message_key }}\",\n\"number\":{{ $json.number }},\n\"len\" : {{ $json.len}},\n\"step\" : {{ $json.step }},\n\"sessionId\":'{{ $json.sessionId }}',\n\"tabId\": '{{ $json.tabId }}'\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1328,
+        144
+      ],
+      "id": "2f3a5363-ed6d-4353-b697-0c3f6a53f232",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "jsCode": "// HTTP Request1 node'ining birinchi itemidagi successResult.cycles ni olish\nconst data = $('HTTP Request1').first().json.successResult.cycles;\n\n// Joriy node inputidagi birinchi itemdan message_key ni olish\nconst message_key = $input.first().json.message_key;\n\nconst step = $input.first().json.step; \n// data uzunligi\nconst l = data.length;\n\n// Natijaviy itemlar ro'yxati\nconst res_data = [];\nconst sessionId = $input.first().json.sessionId\nconst tabId  = $input.first().json.tabId\nfor (let i = 0; i < l; i++) {\n\tres_data.push({\n\t\tdata,                 // butun cycles massivi\n\t\tresult: data[i],      // joriy element\n\t\tmessage_key,\n\t\tnumber: i+1,\n\t\tlen: l,\n      sessionId:sessionId,\n      tabId:tabId,\n       step : step\n\t});\n}\n\n// n8n kutadigan formatda qaytarish\nreturn res_data.map((item) => ({\n\tjson: item,\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1616,
+        16
+      ],
+      "id": "79fcfad5-1a58-42b8-a686-6a75066f2114",
+      "name": "Code3"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={\n  \"len\":{{ $json.len }},\n  \"step\": {{ $json.step }},\n  \"message_key\": '{{ $json.message_key }}',\n\"sessionId\": '{{ $json.sessionId }}',\n\"tabId\": '{{ $json.tabId }}'\n}\n ",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        192,
+        -16
+      ],
+      "id": "17d3c2a9-acd5-4afa-a4da-2da2713c5354",
+      "name": "Edit Fields3"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={\n  \"data\": {{ JSON.stringify($json.data) }} ,\n  \"message_key\": \"{{ $json.message_key }}\",\n  \"number\":{{ $json.number }},\n  \"step\": {{ $json.step }},\n\"sessionId\": '{{ $json.sessionId }}',\n\"tabId\":'{{ $json.tabId }}'\n \n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        176,
+        272
+      ],
+      "id": "ac842fa7-1a99-4c97-98df-e4606edb9e3b",
+      "name": "Edit Fields4"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT json_agg(answer::json) AS all_answers\nFROM answers\nWHERE session_id = '{{ $(\"Edit Fields\").item.json.message_key }}' and type = 'cycle';\n\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2896,
+        -464
+      ],
+      "id": "cffaade9-136a-4768-b5a4-0c5275d67665",
+      "name": "Execute a SQL query",
+      "credentials": {
+        "postgres": {
+          "id": "9PkVclWNXi7t3W0k",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ JSON.stringify($json.all_answers )}}",
+        "options": {
+          "systemMessage": "Siz — \"Aqlli Dispetcher\", ELD (Electronic Logging Device) ma'lumotlarini tahlil qiluvchi, haydovchilarning ishonchli yordamchisisiz. Sizga texnik JSON formatda yuborilgan ma'lumotlar asosida quyidagicha do'stona, tushunarli va amaliy javob yozish topshiriladi:\nEslatma: Chiqarilishi so’ralgan narsalardan boshqa narsalar kerak emas.\nMaqsad (Goal):\nHaydovchining haftalik ish soatlari (70 soat limit) asosida yuzaga kelgan cycle violation(cyce_rest ni emas) holatini tahlil qilish va unga amaliy, insoniy yechim taklif qilish.\n\nO’zgaruvchilar(varaiables):\n“database_extratime” degan o’zgaruvchi yarat va “summa cycle” degan tooldan foydalansang qiymat qaytaradi, database_extratimeni shu o’zgaruvchiga tengla, keyingi bosqichga o’t va bundan tashqari boshqa amal bajarma, toolga birinchi cyclening \"position\" qiymatini yuborishing kerak. masalan '1'. va ozing hohlayotgan event nameni yuborish kerak \"event\" qiymatiga masalan \"DS_ON\" korinishida.\n\nJavob Talablari:\nTil: Faqat o‘zbek tilida.\nOhang: Do‘stona, tajribali hamkasb ohangi, hech qanday qo‘rqitishsiz.\nTuzilishi:\nSalomlashish.\nHolat tahlili (violation bor/yo‘q), bir nechta bo’lishi mumkin masalan(position 2, position 4, position 6…).\nUlarni o’zng uchun nomlab ol, position 2 - 1-cycle, position 4- 2-cycle, position 6 - 3-cycle, endi position emas shu nomlarni ishlat\nAgar kerak bo‘lsa matematik hisob-kitob \nViolationlarning ustida ketma ketlikda amal bajar(birinchi o’rinda 1-cycle (muammo yechilishi yoki yechilmasligidan qattiy nazar keyingi violationga o’t), keyin 2-cycle(bunda ham yechilishi yoki yechilmasligidan qattiy nazar keyingi violationga o’t). Maqsad hamma violationni tahlil qilishimiz kerak.\nAniq tavsiya bilan yakunlansin.\nO’zingda bo’lmagan ma’lumotlar bilan javob berma, ortiqcha gaplar shartmas, pasdagi misollardan andoza ol\nVaqt Hisobi Qoidalari:\nHisob-kitoblar faqat sekundlarda bajarilsin.\nYakuniy javobda sekundlar \"X soat Y daqiqa Z sekund\" formatida chiqarilsin (masalan, 3660 sekund = 1 soat 1 daqiqa).\nQoidalar (Logic):\nQuyidagi shartlar bo‘yicha javob yozilsin:\nAgar cycle_violation >= 0\n→ Violation yo‘q. Haydovchiga qolgan vaqtni 70 soat - cycle hisobida ayting. Do‘stona tarzda yo‘lini davom ettirishi mumkinligini bildiring\nAgar cycle_violation < 0, va database_extratime < cycle_violation\n→ Violationni tuzatishning ortiqcha vaqtlar yo’qligi sababli iloji yo‘qligini tushuntiring\nAgar cycle_violation < 0 va database_extratime ≥ violation\n→ Violation tuzatiladi:\n“Eventlar cycle” degan tooldan foydalanib “n8n” databasega kir, overtimes jadvalidan eventlar va timelarini jadval tarzida chiqaring.\ncycle_rest qiymatini yangila, endi cycle_rest=cycle_rest+database_extratime\ndatabase_extratime yangi qiymati 0 chunki violationni yopishda foydalandik\nHaydovchiga violation yopilganini ayting va qolgan vaqtni aytib, ishni yakunlang.\nAgar ba'zi maydonlar bo'sh bo‘lsa, (masalan overtimes, database_extratime) shunga qarab mulohaza yuritilsin.  Yani hozirda bu amaliyotni bajarish imkoniyat yo’qligi tushuntirilsin va to’xtating(boshqa amaliyotlar bajarilmasin) \nAgar bu oxirgi violation bo’lmasa keyingisiga o’t va yuqoridagi amallarni bajar.\n# Examples\n<assistant_response>\nAssalomu alaykum! Ma’lumotlaringizni tekshirdim.\n## Holat tahlili\n1-cycle: 1-cycleda violation bor (cycle_violation = -123012 sekund)  \n- Bu 34 soat 10 daqiqa 12 sekund limitdan oshib ketilganini bildiradi.\n2-cycle: 2-cycleda violation yo‘q (cycle_violation = 252000)\n## Violationni yopish imkoniyati \nBazadagi ortiqcha vaqt:  \ndatabase_extratime = 127346 sekund(= 35 soat 22 daqiqa 26 sekund)\nDemak, violation to‘liq yopiladi.\n## Violationni ketma-ket bartaraf qilish:\n1-cycle violation (-123012 sekund) ni yopish uchun n8n bazadagi  eventlar (cycle) ro‘yxati:\n+--------------------------------------+---------------+\n| event_id                             | time (sekund) |\n+————————————————————————-+———————+\n| 019ba238-a18d-7677-ab52-0d0ad53248a3 |          2003 |\n| 019ba238-a18d-7343-8542-26082b14fcf7 |          1908 |\n| 019bcbd5-6757-75bd-8379-813db32e58ce |          2979 |\n| 019bcbd5-6757-783e-b16d-9216d6d77084 |          6839 |\n| 019bcbd5-6756-7326-903a-e9dd352fc590 |         18683 |\n| 019ba238-a18f-7063-921e-12091e7f2ce2 |          1959 |\n| 019ba238-a18f-779f-a519-6b0784710687 |          1963 |\n| 019bcbd5-6757-7290-9b51-44e668cc009f |         22868 |\n| 019bcbd5-6757-7174-930b-d101ef7817c4 |          5002 |\n| 019ba238-a190-7931-8fb2-8acdf51d2058 |          1862 |\n| 019bcbd5-6757-7079-a916-8ab9b5e9c025 |          6992 |\n| 019bcbd5-6757-70db-8813-42216366d829 |         14366 |\n| 019bcbd5-6757-7e51-9c83-37ea7a3aed6f |          7005 |\n| 019bcbd5-6757-7f25-8914-f91b4e77f183 |          4102 |\n| 019ba238-a190-7216-b21b-ebb30900335f |          2805 |\n| 019bcbd5-6757-7795-8a79-bbf21e00f163 |         26010 |\n+--------------------------------------+---------------+\n## Qolgan vaqt\n1-cycle:\nQolgan vaqt = 127346 − 123012  = 4334 sekund = 1 soat 12 daqiqa 14 sekund\n2-cycle\nQolgan vaqt = 252000 − 0 = 252000 sekund = 70 soat 0 daqiqa 0 sekund\n</assistant_response>\n\n<assistant_response>\nAssalomu alaykum! Ma’lumotlaringizni tekshirdim.\n## Holat tahlili\n1-cycle: 1-cycleda violation yo’q (cycle_violation =  157561sekund)  \n2-cycle: 2-cycleda violation yo‘q (cycle_violation = 252000)\nCycle violation bo‘lmagani uchun siz bemalol yo‘lingizni davom ettirishingiz mumkin.\n## Qolgan vaqt\n1-cycle:\nQolgan vaqt = 252000 − 94439 = 157561 sekund = 43 soat 46 daqiqa 1 sekund\n2-cycle\nQolgan vaqt = 252000 − 0 = 252000 sekund = 70 soat 0 daqiqa 0 sekund \n</assistant_response>\n\n\n\n"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        3120,
+        -464
+      ],
+      "id": "2b66f36e-0223-4dd6-b191-228cd4352280",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5.2",
+          "mode": "list",
+          "cachedResultName": "gpt-5.2"
+        },
+        "options": {
+          "frequencyPenalty": 0,
+          "presencePenalty": 0,
+          "temperature": 0,
+          "topP": 0.1
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        3120,
+        -304
+      ],
+      "id": "18b5c457-464b-4315-9a3a-db3412fef202",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "D5z0nhMNfd1d8vhz",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.body.message }}\n{{ $json.body.prosit }}",
+        "options": {
+          "systemMessage": "# Identity\nSiz Unione ELD logistika kompaniyasi uchun TORA team  tomonidan ishlab chiqilgan maxsus AI agentsiz. Sizning asosiy maqsadingiz logistlarga yordam berishdir.\n\n# Knowledge Base (Ma'lumotlar bazasi)\nSiz quyidagi faktlarga tayangan holda javob berishingiz kerak:\n- Kompaniya: Unione ELD.\n- Faoliyat hududi: Asosan Amerika (USA) hududidagi driverlar bilan ishlaydi.\n- Tashkil topgan yil: 2020-yil.\n- Xodimlar soni: 100 ga yaqin.\n- Rahbariyat: Kompaniya egasi — Palonchayev Psitoncha.\n- Manzil: Toshkent sh., Mirzo Ulug'bek tumani, \"Aristokrat\" restoraning yuqori qismi, 5-qavat.\n- Dasturchi: Sizni Mamatayev Javoxir ishlab chiqqan.\n\n# Logic & Routing (Mantiq va Yo'naltirish)\nSizga kelgan savollarni uch toifaga ajrating va shunga mos JSON qaytaring:\n\n1.  Driver va Tahlil savollari (Handover):\n    - Agar foydalanuvchi aniq bir driverning xatolarini topishni, loglarni tekshirishni, \"violation\"larni aniqlashni yoki ma'lumotlarni tahlil qilishni so'rasa (masalan: \"Shiftni tekshirib ber\", \"Violation bormi?\", \"Driver xatosi qanaqa?\"):\n    - Tahlil qilish jarayoni bir nechta stepdan iborat. \n    -  Steplar cycle, shift vahokazo boladi.\n    - 'step' qiymati dastlab 1 ga teng boladi. \n    - 'prosit' qiymati true kelsa 'step' ga 1 qoshiladi\n    - Harakat: Siz javob yozmaysiz. Bu ishni keyingi agent bajaradi.\n    - Output: {\"answer\": null, \"next\": true, \"step\":1 }\n\n2.  Umumiy va Kompaniya savollari (General Info):\n    - Agar savol sizning kimligingiz, kompaniya manzili, egasi, ish vaqti yoki umumiy logistika ma'lumotlari haqida bo'lsa:\n    - Harakat: Yuqoridagi \"Knowledge Base\" asosida javob bering.\n    - Output: {\"answer\": \"Sizning javobingiz...\", \"next\": false}\n\n3.  Mavzudan tashqari savollar (Off-topic):\n    - Agar savol logistika, Unione ELD yoki driverlarga aloqador bo'lmasa (masalan: siyosat, ob-havo, ovqat retsepti):\n    - Harakat: Rad javobini bering.\n    - Output: {\"answer\": \"Mening imkoniyatlarim cheklangan.\", \"next\": false}\n\n# Output Format (Qat'iy)\nJavob faqat va faqat quyidagi JSON formatida bo'lishi shart. Hech qanday qo'shimcha matn yoki Markdown bo'lmasin.\n\n{\n  \"answer\": \"String formatidagi javob yoki null\",\n  \"next\": true yoki false\n}\n\n# Examples\n\n<user_query>\nSeni kim yaratgan va ofisingiz qayerda?\n</user_query>\n<assistant_response>\n{\n  \"answer\": \"Meni TORA team ishlab chiqqan. Unione ELD ofisi Mirzo Ulug'bek tumanida joylashgan Aristokrat restoraning yuqori qismida, 5-qavatda joylashgan.\",\n  \"next\": false\n}\n</assistant_response>\n\n<user_query>\nMana bu driverning loglarini tekshirib, xatolarini topib ber.\n</user_query>\n<assistant_response>\n{\n  \"answer\": null,\n  \"next\": true,\n \"step\" : 1\n}\n</assistant_response>\n\n<user_query>\nBugun O'zbekistonda ob-havo qanday?\n</user_query>\n<assistant_response>\n{\n  \"answer\": \"Mening imkoniyatlarim cheklangan.\",\n  \"next\": false\n}\n</assistant_response>"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        -3792,
+        192
+      ],
+      "id": "87865c2c-3ec4-4dad-874d-e5d522cd8bac",
+      "name": "AI Agent1"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4.1",
+          "mode": "list",
+          "cachedResultName": "gpt-4.1"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        -3792,
+        368
+      ],
+      "id": "a30e2544-557a-4458-b85c-c401e25e4f1c",
+      "name": "OpenAI Chat Model1",
+      "credentials": {
+        "openAiApi": {
+          "id": "D5z0nhMNfd1d8vhz",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "bea7c658-d8e8-4cc7-8c85-fffeef1381a3",
+              "leftValue": "={{ $json.items[0].json.next }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -3120,
+        192
+      ],
+      "id": "43f26724-c613-4d41-bbbe-4918bf1e3342",
+      "name": "If3"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = [{ json: {} }];\n\n// Kiruvchi item\nconst inputItem = $input.first();\n\nif (inputItem?.json?.output) {\n  let rawText = inputItem.json.output;\n\n  // === 1. Stringni tozalash ===\n  let cleanedText = rawText\n    .trim()\n    .replace(/^```json\\s*/i, '')\n    .replace(/^```\\s*/i, '')\n    .replace(/```\\s*$/g, '')\n    .replace(/“|”/g, '\"')\n    .replace(/\\\\n/g, '')\n    .replace(/\\s+/g, ' ')\n    .trim();\n\n  try {\n    // === 2. JSON parse ===\n    const parsed = JSON.parse(cleanedText);\n\n    // === 3. Kerakli formatda chiqish ===\n    items[0].json = {\n      answer: parsed.answer ?? \"\",\n      next: Boolean(parsed.next),\n      step: parsed.step ?? \"\" \n    };\n\n  } catch (error) {\n    // Parse bo‘lmasa — default qiymatlar\n    items[0].json = {\n      answer: \"\",\n      next: false,\n      error: \"JSON parse failed\",\n    };\n  }\n} else {\n  // Agar output umuman bo‘lmasa\n  items[0].json = {\n    answer: \"\",\n    next: false,\n    error: \"No output field\",\n  };\n}\n\nreturn { items };\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3392,
+        192
+      ],
+      "id": "bad26ebe-1407-418c-8a12-3b9ac8d03a96",
+      "name": "Code4"
+    },
+    {
+      "parameters": {
+        "jsCode": "let cycleInput;\n\ntry {\n  cycleInput = $input.first().json.items[0].json.answer\n  \n} catch (e) {\n    // cycleInput =$input.first().json.output ;\n  cycleInput = $input.first().json.output\n  \n}\n\n// Birinchi kelgan item’ni olish\nreturn {cycleInput };\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3744,
+        224
+      ],
+      "id": "06705191-3be5-4c63-9937-6e01abe4e148",
+      "name": "Code5"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dateTimeTool",
+      "typeVersion": 2,
+      "position": [
+        -3648,
+        416
+      ],
+      "id": "022025d3-b5ea-4b37-8820-b0c9082df2c9",
+      "name": "Date & Time"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -1408,
+        320
+      ],
+      "id": "76b44a85-49b0-4602-8cf2-55856ac91758",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "name": "Replace Me",
+      "typeVersion": 1,
+      "position": [
+        -240,
+        352
+      ],
+      "id": "990212e5-3a15-460b-b90d-32560cf5d739"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -448,
+        352
+      ],
+      "id": "afe62a72-c9ca-4baf-b5db-3dec54d9062d",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -1408,
+        16
+      ],
+      "id": "6e306c6e-10b1-404e-8697-0bf9562b0b8b",
+      "name": "Loop Over Items1"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "name": "Replace Me1",
+      "typeVersion": 1,
+      "position": [
+        -672,
+        32
+      ],
+      "id": "0cb37807-16ba-4757-90a8-2298eef87a32"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "usaGn939fpiK2XJP",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/usaGn939fpiK2XJP",
+          "cachedResultName": "cycle_yangi"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        -912,
+        32
+      ],
+      "id": "65953bf5-b588-4fb0-97c8-37e3d7a4e0e0",
+      "name": "Execute Workflow3"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "mg3zbugISe6onMj7",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/mg3zbugISe6onMj7",
+          "cachedResultName": "detect_violation_yangi"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        -720,
+        336
+      ],
+      "id": "4d0ae1a9-f0b6-4b5e-9632-c8074ebcd2f5",
+      "name": "Call 'detect_violation_yangi'"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Edit Fields').item.json.step }}",
+                    "rightValue": 1,
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    },
+                    "id": "1db4cf0a-9a69-4466-8e87-f85b72e95f78"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "f0ca89f8-644d-4f84-ab8d-362dabdb259a",
+                    "leftValue": "={{ $('Edit Fields').item.json.step }}",
+                    "rightValue": 2,
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        2576,
+        -272
+      ],
+      "id": "f33d93e4-545a-4cd9-93cb-4add3ee6392c",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT json_agg(answer::json) AS all_answers\nFROM answers\nWHERE session_id = '{{ $(\"Edit Fields\").item.json.message_key }}' and type = 'violation';\n\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2896,
+        -176
+      ],
+      "id": "8e61cd98-33a4-4cb1-a726-9f318b95038c",
+      "name": "Execute a SQL query1",
+      "credentials": {
+        "postgres": {
+          "id": "9PkVclWNXi7t3W0k",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.all_answers }}",
+        "options": {
+          "systemMessage": "Siz — “Aqlli Dispetcher”, ELD (Electronic Logging Device) ma’lumotlarini tahlil qiluvchi,\nhaydovchilarga shift darajasida aniq va amaliy yordam beruvchi mutaxassissiz.\n\nMaqsad:\nBerilgan shift ma’lumotlari asosida\nshift ichidagi barcha violation holatlarini tahlil qilish\nva haydovchiga ularni qanday oldini olish yoki tuzatish mumkinligini\ninsoniy, tushunarli va aniq tarzda tushuntirish.\n\nMuhim eslatmalar:\n- Tahlil FAQAT shift darajasida bo‘lsin.\n- Cycle yoki cycle_rest haqida gapirmang.\n- Faqat berilgan JSON ma’lumotlardan foydalaning.\n- O‘zingizda bo‘lmagan ma’lumotlarni taxmin qilmang.\n\nKirish ma’lumotlari:\nBarcha davomiylik va violation qiymatlari sekundlarda berilgan.\n\nViolation talqinlari:\n- *_violation > 0 → violation mavjud (limitdan oshilgan)\n- *_violation = 0 → violation yo‘q\n\nJavob talablari:\n- Til: faqat o‘zbek tilida.\n- Ohang: do‘stona, tajribali hamkasb.\n- Qo‘rqituvchi yoki buyruq ohangi bo‘lmasin.\n\nTuzilishi:\n1. Salomlashish.\n2. Shift umumiy holati (normal yoki violation mavjud).\n3. Violationlar ketma-ket tahlili (ustuvorlik bilan):\n   - driving_violation\n   - shift_violation\n   - pti_violation\n   - break_violation\n4. Har bir violation uchun:\n   - violation bor yoki yo‘qligi\n   - qancha vaqtga oshib ketgani\n   - bu nimani anglatishi\n   - amaliy yechim (maslahat)\n5. Agar inter_normal_precision_missing mavjud bo‘lsa:\n   - bu ELD aniqligi bilan bog‘liq ekani\n   - haydovchi e’tibor berishi kerakligi yumshoq tarzda aytilsin\n6. Yakuniy xulosa bilan tugallansin.\n\nVaqt hisoblash qoidasi:\n- Hisob-kitoblar sekundlarda bajariladi.\n- Yakuniy matnda vaqtlar:\n  “X soat Y daqiqa Z sekund” formatida ko‘rsatiladi.\n\nMantiq (Logic):\n\nAgar barcha violationlar = 0:\n- Shift to‘liq qoidalarga mos ekani aytiladi.\n- Haydovchiga ishni shu tartibda davom ettirish mumkinligi bildiriladi.\n\nAgar violation mavjud bo‘lsa:\n- Har bir violation alohida ko‘rib chiqilsin.\n- Violationlar ketma-ketlikda tahlil qilinsin,\n  oldingisi tuzatiladimi yoki yo‘qmi — baribir keyingisiga o‘tilsin.\n\nAgar break_violation = 0:\n- Break qoidasi buzilmaganligi alohida ta’kidlanadi.\n\nAgar inter_normal_precision_missing bo‘sh bo‘lmasa:\n- Bu violation emasligi,\n- lekin log aniqligi uchun muhimligi tushuntirilsin.\n"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        3120,
+        -176
+      ],
+      "id": "3f19fd0a-3fa5-44af-8de7-2defa9229052",
+      "name": "AI Agent2"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4.1-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        3120,
+        -16
+      ],
+      "id": "495fc435-5105-4bca-949d-3358b4c60fdc",
+      "name": "OpenAI Chat Model2",
+      "credentials": {
+        "openAiApi": {
+          "id": "D5z0nhMNfd1d8vhz",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.step }}",
+                    "rightValue": 1,
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    },
+                    "id": "49658903-511f-472a-ae58-32222351b55b"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "8c014524-c0a8-4a87-9737-5d4803bc71bb",
+                    "leftValue": "={{ $json.step }}",
+                    "rightValue": 2,
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -2016,
+        176
+      ],
+      "id": "47abb4ae-7dab-4d7e-83f2-20a02b9626d1",
+      "name": "Switch1"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM overtimes WHERE time > 1800",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgresTool",
+      "typeVersion": 2.6,
+      "position": [
+        3392,
+        0
+      ],
+      "id": "ee59897d-fad0-43aa-8875-a29fa4453e8a",
+      "name": "Execute a SQL query in Postgres1",
+      "credentials": {
+        "postgres": {
+          "id": "9PkVclWNXi7t3W0k",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT SUM(time) AS total_time\nFROM overtimes\nWHERE event = 'DS_ON';",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgresTool",
+      "typeVersion": 2.6,
+      "position": [
+        3328,
+        128
+      ],
+      "id": "e4fbbf02-fa4b-451c-89a7-2f590458c79d",
+      "name": "Execute a SQL query in Postgres3",
+      "credentials": {
+        "postgres": {
+          "id": "9PkVclWNXi7t3W0k",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return [\n  {\n    json: $input.all().slice(-1)[0].json\n  }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -96,
+        -16
+      ],
+      "id": "924cb867-efe0-4da1-9001-6446817d1856",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [\n  {\n    json: $input.all().slice(-1)[0].json\n  }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -96,
+        272
+      ],
+      "id": "cc36668e-7f8e-48e9-a6b1-3efaf67bb520",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT SUM(time) AS total_time\nFROM overtimes\nWHERE event = '{{ $fromAI('event', 'Overtime position value', 'string')  }}'\n  AND time > 1800\n  AND message_id = '{{ $('Edit Fields').item.json.message_key }}'\n  AND position =  '{{ $fromAI('position', 'Overtime position value', 'number')  }}';",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgresTool",
+      "typeVersion": 2.6,
+      "position": [
+        3216,
+        -288
+      ],
+      "id": "f4b004a3-ffe4-4cbb-bf80-400d2f4337e6",
+      "name": "summa cycle",
+      "credentials": {
+        "postgres": {
+          "id": "9PkVclWNXi7t3W0k",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT *\nFROM overtimes\nWHERE time > 1800\n  AND event = 'DS_ON' and message_id='{{ $('Edit Fields').item.json.message_key }}'",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgresTool",
+      "typeVersion": 2.6,
+      "position": [
+        3328,
+        -288
+      ],
+      "id": "c447c3ec-fb5e-467e-b397-d5cf9c8e6998",
+      "name": "eventlar cycle",
+      "credentials": {
+        "postgres": {
+          "id": "9PkVclWNXi7t3W0k",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 3
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2160,
+        -256
+      ],
+      "id": "319755e5-a48e-4dfb-b4e5-6bdc3e8d9d18",
+      "name": "Wait",
+      "webhookId": "9cbceaf5-3922-4fd9-b0e9-9665a813310c"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1.3,
+      "position": [
+        3280,
+        32
+      ],
+      "id": "a6565bd8-01a1-48f6-8bca-4a7cfe85928f",
+      "name": "Code Tool"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request1": {
+      "main": [
+        [
+          {
+            "node": "Code2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code2": {
+      "main": [
+        [
+          {
+            "node": "Switch1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code3": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields3": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields4": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Code5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent1": {
+      "main": [
+        [
+          {
+            "node": "Code4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If3": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code4": {
+      "main": [
+        [
+          {
+            "node": "If3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code5": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Date & Time": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Call 'detect_violation_yangi'",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Replace Me": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Replace Me",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Execute Workflow3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Replace Me1": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Workflow3": {
+      "main": [
+        [
+          {
+            "node": "Replace Me1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call 'detect_violation_yangi'": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Execute a SQL query1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query1": {
+      "main": [
+        [
+          {
+            "node": "AI Agent2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model2": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent2",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent2": {
+      "main": [
+        [
+          {
+            "node": "Code5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch1": {
+      "main": [
+        [
+          {
+            "node": "Code3",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query in Postgres1": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent2",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query in Postgres3": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent2",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "summa cycle": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "eventlar cycle": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent2",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "8d3dede3-e298-470e-9498-22356b0ee799",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "db4b0e681f0eee9c442f5f321f39c5ca01fed8a9ac3a130da4919189885d79fd"
+  },
+  "id": "EhzmJQn1vDLUtWEN",
+  "tags": []
+}

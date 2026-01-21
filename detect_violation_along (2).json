@@ -1,0 +1,410 @@
+{
+  "name": "detect_violation_along",
+  "nodes": [
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ JSON.stringify($json.question)}}",
+        "options": {
+          "systemMessage": "# Identity\nYou are an automated FMCSA violation detection bot. Your task is to analyze driver events for a SINGLE SHIFT and return violations ONLY if strict mathematical limits are exceeded.\n\n# Tools\nYou have access to:\n1.  **Calculator:** MUST be used for ALL addition (summing durations) and limit comparisons (e.g., A > B).\n2.  **Date & Time:** MUST be used to calculate the duration between two ISO 8601 timestamps (for the 14-hour rule).\n\n# CRITICAL OUTPUT RULE\n**OUTPUT MUST BE VALID JSON ONLY.**\n* Return ONLY the JSON object `{\"violations\": [...]}`.\n* NO comments, NO markdown, NO explanations.\n\n# Instructions\n* **Input:** JSON object with `events` array.\n* **Source of Truth:** `durationInSeconds`. Treat null/empty as 0.\n\n# Rules Logic (Execute sequentially with Tools)\n\n1.  **PTI (Pre-Trip Inspection):**\n    * **Action:** Identify the *start time* of the first `DS_D` event. Sum `durationInSeconds` of all `DS_ON` events strictly *before* it using **Calculator**.\n    * **Logic:** Use **Calculator** to check: `sum < 900`.\n    * **Result:**\n        * IF TRUE (Violation): Output violation. Set `dateTimeStart` to the start of the first `DS_ON` event.\n        * IF FALSE (Valid): **IGNORE.**\n    * *Description:* \"Haydashdan oldingi tekshiruv (PTI) yetarli emas. Mavjud: {sum} soniya. Talab: 900 soniya.\"\n\n2.  **30-Minute Break (Single Event Check):**\n    * **Action:** Iterate through `DS_D` events.\n    * **Logic:** Use **Calculator** to check if ANY single event `duration` > 28800.\n    * **Result:**\n        * IF TRUE (Violation): Output violation for that specific event. Set `dateTimeStart` and `dateTimeEnd` from that event.\n        * IF FALSE (Valid): **IGNORE.**\n    * *Description:* \"Uzluksiz 8 soatdan ortiq haydash sodir bo'ldi. Davomiyligi: {duration} soniya.\"\n\n3.  **11-Hour Driving Limit (Total):**\n    * **Action:** Extract ALL `DS_D` durations. Create a SINGLE addition expression (e.g., \"500+200+...\") and solve with **Calculator**.\n    * **Logic:** Use **Calculator** to check: `total > 39600`.\n    * **Result:**\n        * IF TRUE (Violation): Output violation. Set `dateTimeStart` to the first driving event, `dateTimeEnd` to the last.\n        * IF FALSE (Valid): **IGNORE.**\n    * *Description:* \"11 soatlik haydash limiti buzildi. Jami: {total} soniya.\"\n\n4.  **14-Hour Shift Window:**\n    * **Action:**\n        1. Get `Shift_Start` (dateTime of first event) and `Shift_End` (dateTime of last event).\n        2. Use **Date & Time** tool to calculate difference in seconds between them.\n        3. Use **Calculator** to add the `durationInSeconds` of the last event to that difference. Result = `Real_Shift_Duration`.\n    * **Logic:** Use **Calculator** to check: `Real_Shift_Duration > 50400`.\n    * **Result:**\n        * IF TRUE (Violation): Output violation.\n        * IF FALSE (Valid): **IGNORE.**\n    * *Description:* \"14 soatlik ish smenasi limiti buzildi. Jami: {Real_Shift_Duration} soniya.\"\n\n# Training Examples\n\n<user_query>\n{ \"events\": [ { \"dateTime\": \"2023-10-01T08:00:00\", \"event\": \"DS_ON\", \"durationInSeconds\": 975 }, { \"dateTime\": \"2023-10-01T08:16:15\", \"event\": \"DS_D\", \"durationInSeconds\": 1000 } ] }\n</user_query>\n<assistant_response>\n{ \"violations\": [] }\n</assistant_response>\n\n<user_query>\n{ \"events\": [ { \"dateTime\": \"2023-10-01T08:00:00\", \"event\": \"DS_ON\", \"durationInSeconds\": 0 }, { \"dateTime\": \"2023-10-01T08:00:00\", \"event\": \"DS_D\", \"durationInSeconds\": 40000 } ] }\n</user_query>\n<assistant_response>\n{\n  \"violations\": [\n    {\n      \"violation\": \"11_hour_rule\",\n      \"dateTimeStart\": \"2023-10-01T08:00:00\",\n      \"dateTimeEnd\": \"2023-10-01T19:06:40\",\n      \"description\": \"11 soatlik haydash limiti buzildi. Jami: 40000 soniya.\"\n    },\n    {\n      \"violation\": \"30_min_rest\",\n      \"dateTimeStart\": \"2023-10-01T08:00:00\",\n      \"dateTimeEnd\": \"2023-10-01T19:06:40\",\n      \"description\": \"Uzluksiz 8 soatdan ortiq haydash sodir bo'ldi. Davomiyligi: 40000 soniya.\"\n    },\n    {\n      \"violation\": \"PTI_violation\",\n      \"dateTimeStart\": \"2023-10-01T08:00:00\",\n      \"dateTimeEnd\": \"2023-10-01T08:00:00\",\n      \"description\": \"Haydashdan oldingi tekshiruv (PTI) yetarli emas. Mavjud: 0 soniya. Talab: 900 soniya.\"\n    }\n  ]\n}\n</assistant_response>",
+          "maxIterations": 50
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        368
+      ],
+      "id": "c9232ac5-d764-4660-b8a3-842799f989f5",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n\"violations\":{{ JSON.stringify($json.violations )}}\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        688,
+        224
+      ],
+      "id": "80a7864a-c108-4a6d-9dff-6d64fbe832cf",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n Function node\n\n// Kirish ma'lumotlari\nconst inputBody = $input.first().json.body;\n\n// type: 1 => shift_rest\n// type: 0 => shift\nconst type = inputBody.type;\nconst events = inputBody.events || [];\n\n// Event mapping obyekti\nconst eventMapping = {\n    1: {\n        1: [\"DS_OFF\", \"Ishdan tashqari\"],\n        2: [\"DS_SB\", \"Uxlayapti yoki dam\"],\n        3: [\"DS_D\", \"Haydash jarayonida\"],\n        4: [\"DS_ON\", \"Ish holati, haydamaydi\"],\n    },\n    2: {\n        1: [\"INTER_NORMAL_PRECISION\", \"To‘liq joylashuv\"],\n        2: [\"INTER_REDUCED_PRECISION\", \"Noaniq joylashuv\"],\n    },\n    3: {\n        1: [\"PS_USE\", \"Shaxsiy foydalanish\"],\n        2: [\"YRD_MOVE\", \"Yard ichida harakat\"],\n        0: [\"PS_CLEAR\", \"Shaxsiy rejim bekor\"],\n    },\n    4: {\n        1: [\"DR_CERT_1\", \"1-tasdiqlash\"],\n        2: [\"DR_CERT_2\", \"2-tasdiqlash\"],\n        3: [\"DR_CERT_3\", \"3-tasdiqlash\"],\n        4: [\"DR_CERT_4\", \"4-tasdiqlash\"],\n        5: [\"DR_CERT_5\", \"5-tasdiqlash\"],\n        6: [\"DR_CERT_6\", \"6-tasdiqlash\"],\n        7: [\"DR_CERT_7\", \"7-tasdiqlash\"],\n        8: [\"DR_CERT_8\", \"8-tasdiqlash\"],\n        9: [\"DR_CERT_9\", \"9-tasdiqlash\"],\n    },\n    5: {\n        1: [\"DR_LOGIN\", \"Haydovchi tizimga kirdi\"],\n        2: [\"DR_LOGOUT\", \"Haydovchi tizimdan chiqdi\"],\n    },\n    6: {\n        1: [\"ENG_UP_NORMAL\", \"Motor ishga tushdi (GPS aniq)\"],\n        2: [\"ENG_UP_REDUCED\", \"Motor ishga tushdi (GPS noaniq)\"],\n        3: [\"ENG_DOWN_NORMAL\", \"Motor o‘chirildi (GPS aniq)\"],\n        4: [\"ENG_DOWN_REDUCED\", \"Motor o‘chirildi (GPS noaniq)\"],\n    },\n    7: {\n        1: [\"MALF_LOGGED\", \"Nosozlik qayd etildi\"],\n        2: [\"MALF_CLEARED\", \"Nosozlik bartaraf qilindi\"],\n        3: [\"DIAG_LOGGED\", \"Diagnostika xatosi bor\"],\n        4: [\"DIAG_CLEARED\", \"Diagnostika tuzatildi\"],\n    }\n};\n\n// Eventlarni boyitish\nconst processedEvents = events.map(ev => {\n    const type = ev.eventType;\n    const code = ev.eventCode;\n\n    let eventName = \"\";\n    let eventDesc = \"\";\n\n    if (eventMapping[type] && eventMapping[type][code]) {\n        eventName = eventMapping[type][code][0];\n        eventDesc = eventMapping[type][code][1];\n    } else {\n        eventName = ev.eventCodeDescription || `UNKNOWN_${type}_${code}`;\n        eventDesc = ev.eventTypeDescription || \"Noma'lum holat\";\n    }\n\n    return {\n        dateTime: ev.dateTime,\n        durationInSeconds: ev.durationInSeconds,\n        event: eventName,\n        eventDescription: eventDesc,\n        longitude: ev.longitude,\n        latitude: ev.latitude,\n        calculatedLocation: ev.calculatedLocation,\n        manualLocation: ev.manualLocation || '',\n        totalEngineHours: ev.totalEngineHours || 0,\n        totalVehicleMiles: ev.totalVehicleMiles,\n        originalEventType: type,\n        originalEventCode: code\n    };\n});\n\n// Natija obyekt nomi type asosida tanlanadi\nconst outputKey = type === 1 ? \"shift_rest\" : \"shift\";\n\n// Yakuniy chiqish\nreturn {\n  \"question\":{\n    [outputKey]: processedEvents}\n};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -512,
+        224
+      ],
+      "id": "98cb0f89-4d74-42e6-a8a0-7c16ae52fdf4",
+      "name": "Code"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = [{ json: {} }];\n\n// Kiruvchi ma'lumotni olish\nconst inputItem = $input.first();\n\nif (inputItem && inputItem.json && inputItem.json.output) {\n  let rawText = inputItem.json.output;\n\n  // Markdown bloklarini olib tashlash va tozalash\n  let cleanedText = rawText\n    .trim()\n    .replace(/^```json\\s*/i, '')\n    .replace(/```\\s*$/g, '')\n    .replace(/^\\(\\s*\\{/, '{')\n    .replace(/\\}\\s*\\)$/, '}')\n    .replace(/“/g, '\"')\n    .replace(/”/g, '\"')\n    .replace(/\\\\n/g, '')\n    .replace(/\\s+/g, ' ')\n    .trim();\n\n  try {\n    const jsonOutput = JSON.parse(cleanedText);\n\n    let violations = [];\n\n    // 1. Kutilgan asosiy format: {\"violations\": [...]}\n    if (jsonOutput.violations && Array.isArray(jsonOutput.violations)) {\n      violations = jsonOutput.violations;\n    }\n    // 2. Agar eski/muqobil formatda kelsa: {\"answer\": [...]}\n    else if (jsonOutput.answer && Array.isArray(jsonOutput.answer)) {\n      violations = jsonOutput.answer;\n    }\n    // 3. Agar faqat massiv (qo'shtirnoqsiz) bo'lsa\n    else if (Array.isArray(jsonOutput)) {\n      violations = jsonOutput;\n    }\n    // 4. Agar agent faqat bitta violation obyektini qaytarsa\n    else if (typeof jsonOutput === 'object' && jsonOutput !== null && jsonOutput.violation) {\n      violations = [jsonOutput];\n    }\n    // 5. Format noto'g'ri bo'lsa\n    else {\n      throw new Error(\"Kutilgan 'violations' maydoni topilmadi.\");\n    }\n\n    items[0].json = { violations };\n\n  } catch (error) {\n    // --- Birinchi parse xatosi: Qayta urinish boshlanadi ---\n    try {\n      let retryText = rawText\n        .replace(/```json\\n?/gi, '')\n        .replace(/```/g, '')\n        .replace(/\\\\n/g, '')\n        .replace(/\\n/g, '')\n        .trim();\n\n      const retryOutput = JSON.parse(retryText);\n\n      let retryViolations = [];\n\n      if (retryOutput.violations && Array.isArray(retryOutput.violations)) {\n        retryViolations = retryOutput.violations;\n      } else if (Array.isArray(retryOutput)) {\n        retryViolations = retryOutput;\n      } else {\n        throw new Error(\"Retry failed\");\n      }\n\n      items[0].json = { violations: retryViolations };\n\n    } catch (retryError) {\n      // --- Qayta urinish ham muvaffaqiyatsiz tugadi ---\n      items[0].json = {\n        violations: [{\n          violation: \"data_quality\",\n          dateTimeStart: new Date().toISOString(),\n          dateTimeEnd: new Date().toISOString(),\n          description: \"JSON parse xatosi (2-urinish ham muvaffaqiyatsiz): \" + error.message\n        }]\n      };\n    }\n  }\n} else {\n  items[0].json = {\n    violations: [{\n      violation: \"data_quality\",\n      dateTimeStart: new Date().toISOString(),\n      dateTimeEnd: new Date().toISOString(),\n      description: \"Kiruvchi ma'lumot topilmadi yoki noto'g'ri format\"\n    }]\n  };\n}\n\nreturn items;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        384,
+        224
+      ],
+      "id": "b40fc529-268e-4099-b2b4-fa217d2c9e44",
+      "name": "Code1"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "cc487986-02ad-45e8-8521-fdb8a111c381",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -784,
+        208
+      ],
+      "id": "f2980f11-3b42-47ff-94dd-3570e2091737",
+      "name": "Webhook",
+      "webhookId": "cc487986-02ad-45e8-8521-fdb8a111c381"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5.2",
+          "mode": "list",
+          "cachedResultName": "gpt-5.2"
+        },
+        "options": {
+          "frequencyPenalty": 0,
+          "presencePenalty": 0,
+          "temperature": 0,
+          "topP": 1
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        -48,
+        528
+      ],
+      "id": "49506bc0-0ad0-4c6f-9b30-a96fc58cb15e",
+      "name": "OpenAI Chat Model",
+      "notesInFlow": false,
+      "credentials": {
+        "openAiApi": {
+          "id": "rNeERiusV2ulP7X1",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ JSON.stringify($json.question)}}",
+        "options": {
+          "systemMessage": "# Identity\nYou are a specialized FMCSA \"10-Hour Rest\" Validator Agent. Your SOLE purpose is to check the rest period requirement based on the shift type.\n\n# Tools\nYou have access to a **Calculator**.\n* **MANDATORY:** You MUST use the Calculator tool for ALL addition (summing durations) and comparison (checking limits) operations. Do NOT calculate mentally.\n\n# CRITICAL OUTPUT RULE\n**OUTPUT MUST BE VALID JSON ONLY.**\n* Return ONLY the JSON object `{\"violations\": [...]}`.\n* NO comments, NO markdown, NO explanations.\n\n# Instructions\n* **Input:** JSON object with `type` (integer) and `events` array.\n* **Source of Truth:** `durationInSeconds`. Treat null/empty as 0.\n\n# Logic (Execute in STRICT ORDER)\n\n1.  **Check `type` (Gatekeeper):**\n    * **Logic:** Look at the `type` field.\n    * **IF `type` == 0:** STOP IMMEDIATELY. Return `{\"violations\": []}`. (Do not use Calculator, do not check events).\n    * **IF `type` != 0:** Proceed to Step 2.\n\n2.  **Calculate Rest (Use Calculator):**\n    * **Action:** Filter events where `eventCodeDescription` is **\"DS_OFF\"** OR **\"DS_SB\"**.\n    * **Calculation:** Use **Calculator** to SUM the `durationInSeconds` of these filtered events. Result = `total_rest`.\n\n3.  **Determine Violation (Use Calculator):**\n    * **Logic:** Use **Calculator** to check: `total_rest < 36000` (10 hours).\n    * **Result:**\n        * **IF TRUE (Violation):** Return the violation object.\n        * **IF FALSE (Valid):** Return `{\"violations\": []}`.\n\n* **Language Requirement:**\n    * `description` field MUST be in **Uzbek**.\n\n# Examples\n\n<user_query>\n{\n  \"type\": 0,\n  \"events\": [ { \"dateTime\": \"...\", \"durationInSeconds\": 100, \"eventCodeDescription\": \"DS_D\" } ]\n}\n</user_query>\n<assistant_response>\n{\n  \"violations\": []\n}\n</assistant_response>\n\n<user_query>\n{\n  \"type\": 1,\n  \"events\": [\n    { \"dateTime\": \"...\", \"durationInSeconds\": 20000, \"eventCodeDescription\": \"DS_OFF\" },\n    { \"dateTime\": \"...\", \"durationInSeconds\": 10000, \"eventCodeDescription\": \"DS_SB\" },\n    { \"dateTime\": \"...\", \"durationInSeconds\": 50000, \"eventCodeDescription\": \"DS_D\" }\n  ]\n}\n</user_query>\n<assistant_response>\n{\n  \"violations\": [\n    {\n      \"violation\": \"10_hour_rest\",\n      \"dateTimeStart\": \"Unknown\",\n      \"dateTimeEnd\": \"Unknown\",\n      \"description\": \"Smena turi (Type 1) uchun 10 soatlik dam olish talab qilinadi. Hozirgi dam: 30000 soniya.\"\n    }\n  ]\n}\n</assistant_response>\n\nbu xato natija qaytarayapti\n[\n  {\n    \"data\": {\n      \"shift_rest\": [\n        {\n          \"dateTime\": \"2026-01-07T15:48:36.707397\",\n          \"durationInSeconds\": 102612,\n          \"event\": \"DS_OFF\",\n          \"eventDescription\": \"Ishdan tashqari\",\n          \"longitude\": -96.70375,\n          \"latitude\": 32.631221,\n          \"calculatedLocation\": \"1.4 mi SSE from Hutchins TX\",\n          \"manualLocation\": \"\",\n          \"totalEngineHours\": 6302.8,\n          \"totalVehicleMiles\": 171649,\n          \"originalEventType\": 1,\n          \"originalEventCode\": 1\n        },\n        {\n          \"dateTime\": \"2026-01-07T15:48:41.707397\",\n          \"durationInSeconds\": 0,\n          \"event\": \"ENG_DOWN_NORMAL\",\n          \"eventDescription\": \"Motor o‘chirildi (GPS aniq)\",\n          \"longitude\": -96.70375,\n          \"latitude\": 32.631221,\n          \"calculatedLocation\": \"1.4 mi SSE from Hutchins TX\",\n          \"manualLocation\": \"\",\n          \"totalEngineHours\": 6302.8,\n          \"totalVehicleMiles\": 171649,\n          \"originalEventType\": 6,\n          \"originalEventCode\": 3\n        },\n        {\n          \"dateTime\": \"2026-01-07T15:49:36.115397\",\n          \"durationInSeconds\": 0,\n          \"event\": \"DR_CERT_2\",\n          \"eventDescription\": \"2-tasdiqlash\",\n          \"longitude\": -96.70375,\n          \"latitude\": 32.631221,\n          \"calculatedLocation\": \"1.4 mi SSE from Hutchins TX\",\n          \"manualLocation\": \"\",\n          \"totalEngineHours\": 0,\n          \"totalVehicleMiles\": 0,\n          \"originalEventType\": 4,\n          \"originalEventCode\": 2\n        },\n        {\n          \"dateTime\": \"2026-01-07T15:49:36.115397\",\n          \"durationInSeconds\": 0,\n          \"event\": \"DR_CERT_1\",\n          \"eventDescription\": \"1-tasdiqlash\",\n          \"longitude\": -96.70375,\n          \"latitude\": 32.631221,\n          \"calculatedLocation\": \"1.4 mi SSE from Hutchins TX\",\n          \"manualLocation\": \"\",\n          \"totalEngineHours\": 0,\n          \"totalVehicleMiles\": 0,\n          \"originalEventType\": 4,\n          \"originalEventCode\": 1\n        },\n        {\n          \"dateTime\": \"2026-01-08T19:36:00.429397\",\n          \"durationInSeconds\": 0,\n          \"event\": \"DR_CERT_1\",\n          \"eventDescription\": \"1-tasdiqlash\",\n          \"longitude\": -96.702705,\n          \"latitude\": 32.63216,\n          \"calculatedLocation\": \"1.3 mi SSE from Hutchins TX\",\n          \"manualLocation\": \"\",\n          \"totalEngineHours\": 6321.7,\n          \"totalVehicleMiles\": 171649,\n          \"originalEventType\": 4,\n          \"originalEventCode\": 1\n        },\n        {\n          \"dateTime\": \"2026-01-08T20:01:50.912397\",\n          \"durationInSeconds\": 0,\n          \"event\": \"ENG_DOWN_NORMAL\",\n          \"eventDescription\": \"Motor o‘chirildi (GPS aniq)\",\n          \"longitude\": -96.702705,\n          \"latitude\": 32.63216,\n          \"calculatedLocation\": \"1.3 mi SSE from Hutchins TX\",\n          \"manualLocation\": \"\",\n          \"totalEngineHours\": 6322.15,\n          \"totalVehicleMiles\": 171649,\n          \"originalEventType\": 6,\n          \"originalEventCode\": 3\n        },\n        {\n          \"dateTime\": \"2026-01-08T20:18:02.912397\",\n          \"durationInSeconds\": 0,\n          \"event\": \"ENG_UP_NORMAL\",\n          \"eventDescription\": \"Motor ishga tushdi (GPS aniq)\",\n          \"longitude\": -96.702705,\n          \"latitude\": 32.63216,\n          \"calculatedLocation\": \"1.3 mi SSE from Hutchins TX\",\n          \"manualLocation\": \"\",\n          \"totalEngineHours\": 6322.15,\n          \"totalVehicleMiles\": 171649,\n          \"originalEventType\": 6,\n          \"originalEventCode\": 1\n        }\n      ]\n    },\n    \"messsage_key\": \"aq17PnIYVAvrr8e1o6GOV3n1Aejc9kgJ\",\n    \"position\": \"[3,5]\"\n  }\n]\n\n[\n  {\n    \"output\": \"{\\\"violations\\\":[{\\\"violation\\\":\\\"10_hour_rest\\\",\\\"dateTimeStart\\\":\\\"Unknown\\\",\\\"dateTimeEnd\\\":\\\"Unknown\\\",\\\"description\\\":\\\"Smena turi (Type 1) uchun 10 soatlik dam olish talab qilinadi. Hozirgi dam: 0 soniya.\\\"}]}\"\n  }\n]",
+          "enableStreaming": true
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        0,
+        0
+      ],
+      "id": "550a6b42-1837-4110-919c-157a7ad6bc8d",
+      "name": "AI Agent1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "cfbc4589-5469-47ce-933e-89f67f72d0ad",
+              "leftValue": "={{'shift_rest' in  $json.question }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -288,
+        208
+      ],
+      "id": "764d69b6-40f0-4289-879d-40c698014c6e",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5.2",
+          "mode": "list",
+          "cachedResultName": "gpt-5.2"
+        },
+        "responsesApiEnabled": false,
+        "options": {
+          "frequencyPenalty": 0,
+          "presencePenalty": 0,
+          "temperature": 0,
+          "topP": 1
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        -32,
+        160
+      ],
+      "id": "7c3e7add-059e-4aa1-bcf8-d3817049b65d",
+      "name": "OpenAI Chat Model1",
+      "credentials": {
+        "openAiApi": {
+          "id": "rNeERiusV2ulP7X1",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.toolCalculator",
+      "typeVersion": 1,
+      "position": [
+        320,
+        576
+      ],
+      "id": "b6ae31d6-0736-4d23-9998-65401eae1a46",
+      "name": "Calculator"
+    },
+    {
+      "parameters": {
+        "operation": "getTimeBetweenDates",
+        "startDate": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Start_Date', ``, 'string') }}",
+        "endDate": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('End_Date', ``, 'string') }}",
+        "units": [
+          "second"
+        ],
+        "outputFieldName": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Output_Field_Name', ``, 'string') }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dateTimeTool",
+      "typeVersion": 2,
+      "position": [
+        160,
+        576
+      ],
+      "id": "19947c24-5746-4de6-866b-ac0c81440a39",
+      "name": "Date & Time"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.toolCalculator",
+      "typeVersion": 1,
+      "position": [
+        368,
+        16
+      ],
+      "id": "128e0b8d-4623-4ccc-8130-cff84520e166",
+      "name": "Calculator1"
+    },
+    {
+      "parameters": {
+        "operation": "getTimeBetweenDates",
+        "startDate": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Start_Date', ``, 'string') }}",
+        "endDate": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('End_Date', ``, 'string') }}",
+        "units": [
+          "second"
+        ],
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dateTimeTool",
+      "typeVersion": 2,
+      "position": [
+        544,
+        32
+      ],
+      "id": "324d7cc6-9c91-4af4-92bf-354782c3e1dc",
+      "name": "Date & Time1"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Code1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code1": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent1": {
+      "main": [
+        [
+          {
+            "node": "Code1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculator": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Date & Time": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculator1": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Date & Time1": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "62916c25-75d6-4f7a-9376-cc37307f0e7b",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "239d7e9490a1f2644dc83e4e16c47ce7b54ec2778f4a9f546da0dddc3c42fe60"
+  },
+  "id": "yyFq9iyhodx0MvLG18VNk",
+  "tags": []
+}

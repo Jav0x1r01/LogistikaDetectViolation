@@ -1,0 +1,307 @@
+{
+  "name": "cycle_yangi",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -272,
+        80
+      ],
+      "id": "79c02b32-39e5-4cd2-8265-74220739e3c9",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "36c4f926-9b72-4dda-8264-a2f42873a60e",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -272,
+        -128
+      ],
+      "id": "22eb3770-d8a0-4b07-8957-ded734db957d",
+      "name": "Webhook",
+      "webhookId": "36c4f926-9b72-4dda-8264-a2f42873a60e"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={\n  \"data\":  {{ JSON.stringify ($json.result) ||  JSON.stringify( $json.body.result) }},\n  \"message_key\": \"{{ $json.message_key ||  $json.body.message_key }}\",\n\"number\":{{ $json.number ||  $json.body.number}}\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -80,
+        -32
+      ],
+      "id": "51e3b52a-71f9-4d64-a01b-d4bb20def759",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "jsCode": "// N8n Function node kodi\nlet cycleInput;\n\ntry {\n  cycleInput =  $json[\"data\"] \n    // cycleInput = $input.first().json.body;\n} catch (e) {\n    cycleInput = $input.first().json.body;\n}\nconst eventMapping = {\n  1: {\n    1: [\"DS_OFF\", \"Ishdan tashqari\"],\n    2: [\"DS_SB\", \"Uxlayapti yoki dam\"],\n    3: [\"DS_D\", \"Haydash jarayonida\"],\n    4: [\"DS_ON\", \"Ish holati, haydamaydi\"],\n  },\n  2: {\n    1: [\"INTER_NORMAL_PRECISION\", \"To'liq joylashuv\"],\n    2: [\"INTER_REDUCED_PRECISION\", \"Noaniq joylashuv\"],\n  },\n  3: {\n    1: [\"PS_USE\", \"Shaxsiy foydalanish\"],\n    2: [\"YRD_MOVE\", \"Yard ichida harakat\"],\n    0: [\"PS_CLEAR\", \"Shaxsiy rejim bekor\"],\n  },\n  4: {\n    1: [\"DR_CERT_1\", \"1-tasdiqlash\"],\n    2: [\"DR_CERT_2\", \"2-tasdiqlash\"],\n    3: [\"DR_CERT_3\", \"3-tasdiqlash\"],\n    4: [\"DR_CERT_4\", \"4-tasdiqlash\"],\n    5: [\"DR_CERT_5\", \"5-tasdiqlash\"],\n    6: [\"DR_CERT_6\", \"6-tasdiqlash\"],\n    7: [\"DR_CERT_7\", \"7-tasdiqlash\"],\n    8: [\"DR_CERT_8\", \"8-tasdiqlash\"],\n    9: [\"DR_CERT_9\", \"9-tasdiqlash\"],\n  },\n  5: {\n    1: [\"DR_LOGIN\", \"Haydovchi tizimga kirdi\"],\n    2: [\"DR_LOGOUT\", \"Haydovchi tizimdan chiqdi\"],\n  },\n  6: {\n    1: [\"ENG_UP_NORMAL\", \"Motor ishga tushdi (GPS aniq)\"],\n    2: [\"ENG_UP_REDUCED\", \"Motor ishga tushdi (GPS noaniq)\"],\n    3: [\"ENG_DOWN_NORMAL\", \"Motor o'chirildi (GPS aniq)\"],\n    4: [\"ENG_DOWN_REDUCED\", \"Motor o'chirildi (GPS noaniq)\"],\n  },\n  7: {\n    1: [\"MALF_LOGGED\", \"Nosozlik qayd etildi\"],\n    2: [\"MALF_CLEARED\", \"Nosozlik bartaraf qilindi\"],\n    3: [\"DIAG_LOGGED\", \"Diagnostika xatosi bor\"],\n    4: [\"DIAG_CLEARED\", \"Diagnostika tuzatildi\"],\n  }\n};\n\n// Eventni qayta ishlash funksiyasi\nfunction processEvent(event) {\n  const type = event.eventType;\n  const code = event.eventCode;\n  let eventName = \"\";\n  let eventDesc = \"\";\n  \n  if (eventMapping[type] && eventMapping[type][code]) {\n    eventName = eventMapping[type][code][0];\n    eventDesc = eventMapping[type][code][1];\n  } else {\n    eventName = event.eventCodeDescription || `UNKNOWN_${type}_${code}`;\n    eventDesc = event.eventTypeDescription || \"Noma'lum holat\";\n  }\n  \n  return {\n    id : event.id,\n    dateTime: event.dateTime,\n    durationInSeconds: event.durationInSeconds,\n    event: eventName,\n    eventDescription: eventDesc,\n    longitude: event.longitude,\n    latitude: event.latitude,\n    calculatedLocation: event.calculatedLocation,\n    manualLocation: event.manualLocation || '',\n    totalEngineHours: event.totalEngineHours || 0,\n    totalVehicleMiles: event.totalVehicleMiles\n  };\n}\n\n// Asosiy transformatsiya\nlet result;\n\nif (cycleInput.shifts && Array.isArray(cycleInput.shifts)) {\n  // Cycle uchun\n  const shiftsArray = cycleInput.shifts.map(shift => {\n    const shiftObj = {};\n    \n    if (shift.type === 0 && shift.events && Array.isArray(shift.events)) {\n      shiftObj.shift = shift.events.map(processEvent);\n    }\n    \n    if (shift.type === 1 && shift.events && Array.isArray(shift.events)) {\n      shiftObj.shift_rest = shift.events.map(processEvent);\n    }\n    \n    return Object.keys(shiftObj).length > 0 ? shiftObj : {};\n  }).filter(shift => Object.keys(shift).length > 0);\n  \n  result = {\n    cycle_type: 'cycle',\n    shifts: shiftsArray\n  };\n} else if (cycleInput.events && Array.isArray(cycleInput.events)) {\n  // Cycle_rest uchun\n  const processedEvents = cycleInput.events.map(processEvent);\n  \n  result = {\n    cycle_type: 'cycle_rest',\n    events: processedEvents\n  };\n} else {\n  result = {};\n}\n\n// Natijani qaytarish\nreturn [{ json: { result } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        80,
+        -32
+      ],
+      "id": "22329908-c27e-4811-b5e5-81e2e251c0cb",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst num = $('Edit Fields').first().json.number;\n\n// ================= CONFIG =================\nconst CYCLE_LIMIT_SEC = 70 * 3600; // Faqat 70 soat\nconst RESET_REQUIRED_SEC = 34 * 3600; // 122400 sec\nconst REST_MIN = 36000; // 10 soat\n\n// ================= SHIFT CONSTANTS =================\nconst PTI_MIN = 900;\nconst BREAK_AFTER = 28800;\nconst BREAK_MIN = 1800;\nconst DRIVE_LIMIT = 39600;\nconst SHIFT_LIMIT = 50400;\n\n// =================================================\n// =============== CYCLE_REST MODE =================\n// =================================================\nif (input.result.cycle_type === \"cycle_rest\") {\n  const events = input.result.events || [];\n\n  let cycle_rest_duration = 0;\n  const gen_overtime = [];\n\n  // OFF va Sleeper vaqtlarini yig'amiz\n  for (const ev of events) {\n    if (ev.event === \"DS_OFF\" || ev.event === \"DS_SB\") {\n      const duration = ev.durationInSeconds || 0;\n      cycle_rest_duration += duration;\n    }\n  }\n\n  const cycle_rest_violation = cycle_rest_duration - RESET_REQUIRED_SEC;\n\n  // Agar ortiqcha vaqt bo'lsa (34 soatdan ko'p)\n  if (cycle_rest_violation > 0) {\n    let remaining_overtime = cycle_rest_violation;\n\n    // Eventlarni teskari tartibda o'qiymiz (oxiridan boshlab)\n    for (let i = events.length - 1; i >= 0 && remaining_overtime > 0; i--) {\n      const ev = events[i];\n      \n      if (ev.event === \"DS_OFF\" || ev.event === \"DS_SB\") {\n        const duration = ev.durationInSeconds || 0;\n        \n        if (duration > 0) {\n          const overtime_part = Math.min(remaining_overtime, duration);\n          \n          // Listning boshiga qo'shamiz (chunki teskari o'qiyapmiz)\n          gen_overtime.unshift({\n            event_id: ev.id ?? null,\n            time: overtime_part,\n            dateTime: ev.dateTime ?? null,\n            position: num,\n            type: \"cycle_rest\",\n            event : ev.event\n          });\n          \n          remaining_overtime -= overtime_part;\n        }\n      }\n    }\n  }\n\n  return {\n    cycle_type: \"cycle_rest\",\n    cycle_rest_duration,\n    cycle_rest_violation,\n    position: num,\n    gen_overtime\n  };\n}\n\n// =================================================\n// ================== CYCLE MODE ===================\n// =================================================\n\n// ================= COLLECT SHIFTS =================\nconst allShifts = input.result.shifts || [];\n\nif (!allShifts.length) {\n  return {\n    cycle_type: \"cycle\",\n    cycle_total_work_hours: 0,\n    cycle_violation: 0,\n    position: num,\n    gen_overtime: []\n  };\n}\n\n// ================= CYCLE WORK TIME CALCULATION =================\nlet cycleWorkSec = 0;\nconst gen_overtime = [];\n\nfor (const shiftBlock of allShifts) {\n  const shift = shiftBlock.shift;\n  \n  if (!Array.isArray(shift) || shift.length === 0) {\n    continue;\n  }\n\n  // ================= SHIFT ANALYSIS =================\n  const shiftOvertimes = calculateShiftOvertimes(shift, num);\n  \n  // Har bir shiftning gen_overtime larini umumiy listga qo'shamiz\n  gen_overtime.push(...shiftOvertimes);\n\n  // Cycle uchun umumiy work time\n  for (const ev of shift) {\n    if (ev.event === \"DS_ON\" || ev.event === \"DS_D\") {\n      cycleWorkSec += ev.durationInSeconds || 0;\n    }\n  }\n}\n\n// ================= SHIFT REST ANALYSIS =================\nconst allShiftRests = input.result.shift_rests || [];\n\nfor (const shiftRestBlock of allShiftRests) {\n  const shift_rest = shiftRestBlock.shift_rest;\n  \n  if (!Array.isArray(shift_rest) || shift_rest.length === 0) {\n    continue;\n  }\n\n  // ================= SHIFT REST OVERTIMES =================\n  const shiftRestOvertimes = calculateShiftRestOvertimes(shift_rest, num);\n  \n  // Shift rest overtimes ni umumiy listga qo'shamiz\n  gen_overtime.push(...shiftRestOvertimes);\n}\n\n// ================= CYCLE VIOLATION (70 soat) =================\nconst cycle_violation = CYCLE_LIMIT_SEC - cycleWorkSec;\n\n// ================= RESULT =================\nreturn {\n  cycle_type: \"cycle\",\n  cycle_total_work_hours: cycleWorkSec,\n  cycle_violation,\n  position: num,\n  gen_overtime\n};\n\n// =================================================\n// ================= SHIFT OVERTIME CALCULATOR ======\n// =================================================\nfunction calculateShiftOvertimes(shift, position) {\n  // ================= PTI =================\n  let pti_duration = 0;\n\n  for (const ev of shift) {\n    if (ev.event === \"DS_D\") break;\n    if (ev.event === \"DS_ON\") {\n      pti_duration += ev.durationInSeconds || 0;\n    }\n  }\n\n  // ================= BREAK TIME =================\n  let used_break_time = 0;\n\n  for (const ev of shift) {\n    const duration = ev.durationInSeconds || 0;\n\n    if (ev.event === \"DS_OFF\" || ev.event === \"DS_SB\") {\n      if (duration >= BREAK_MIN) {\n        used_break_time = duration;\n        break;\n      }\n    }\n  }\n\n  // ================= GEN OVERTIME (EVENT-LEVEL) =================\n  const gen_overtime = [];\n\n  let remaining_pti = pti_duration;\n  let remaining_break = used_break_time;\n\n  for (const ev of shift) {\n    let duration = ev.durationInSeconds || 0;\n    if (duration <= 0) continue;\n\n    let overtime_part = 0;\n\n    // DRIVING → gen_overtime emas\n    if (ev.event === \"DS_D\") {\n      continue;\n    }\n\n    // DS_ON → PTI dan ayiramiz\n    if (ev.event === \"DS_ON\") {\n      if (remaining_pti > 0) {\n        const used = Math.min(remaining_pti, duration);\n        remaining_pti -= used;\n        duration -= used;\n      }\n\n      if (duration > 0) {\n        overtime_part = duration;\n      }\n    }\n\n    // DS_OFF / DS_SB → BREAK dan ayiramiz\n    else if (ev.event === \"DS_OFF\" || ev.event === \"DS_SB\") {\n      if (remaining_break > 0) {\n        const used = Math.min(remaining_break, duration);\n        remaining_break -= used;\n        duration -= used;\n      }\n\n      if (duration > 0) {\n        overtime_part = duration;\n      }\n    }\n\n    if (overtime_part > 0) {\n      gen_overtime.push({\n        event_id: ev.id ?? null,\n        event: ev.event,\n        dateTime: ev.dateTime,\n        time: overtime_part,\n        position: position,\n        type: \"shift\"\n      });\n    }\n  }\n\n  // ================= RETURN OVERTIMES =================\n  return gen_overtime;\n}\n\n// =================================================\n// ================= SHIFT REST OVERTIME CALCULATOR =\n// =================================================\nfunction calculateShiftRestOvertimes(shift_rest, position) {\n  let rest_duration = 0;\n  const gen_overtime = [];\n\n  // OFF va Sleeper vaqtlarini yig'amiz\n  for (const ev of shift_rest) {\n    if (ev.event === \"DS_OFF\" || ev.event === \"DS_SB\") {\n      rest_duration += ev.durationInSeconds || 0;\n    }\n  }\n\n  const rest_violation = rest_duration - REST_MIN;\n\n  // Agar ortiqcha vaqt bo'lsa (10 soatdan ko'p)\n  if (rest_violation > 0) {\n    let remaining_overtime = rest_violation;\n\n    // Eventlarni teskari tartibda o'qiymiz (oxiridan boshlab)\n    for (let i = shift_rest.length - 1; i >= 0 && remaining_overtime > 0; i--) {\n      const ev = shift_rest[i];\n\n      if (ev.event === \"DS_OFF\" || ev.event === \"DS_SB\") {\n        const duration = ev.durationInSeconds || 0;\n\n        if (duration > 0) {\n          const overtime_part = Math.min(remaining_overtime, duration);\n\n          // Listning boshiga qo'shamiz (chunki teskari o'qiyapmiz)\n          gen_overtime.unshift({\n            event_id: ev.id ?? null,\n            event: ev.event,\n            dateTime: ev.dateTime,\n            time: overtime_part,\n            position: position,\n            type: \"shift_rest\"\n          });\n\n          remaining_overtime -= overtime_part;\n        }\n      }\n    }\n  }\n\n  return gen_overtime;\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        -32
+      ],
+      "id": "26978d60-65b3-4763-a43d-d492da5a344d",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO answers (session_id, answer,position,type)\nVALUES ($1, $2, $3, 'cycle');",
+        "options": {
+          "queryReplacement": "=[  {{ $('Edit Fields').item.json.message_key }},{{ JSON.stringify(Object.fromEntries(\n  Object.entries($json).filter(([key]) => key !== 'gen_overtime')\n)) }},{{ $('Edit Fields').item.json.number }} ]\n"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        992,
+        -208
+      ],
+      "id": "38c5b8cd-9b6b-4c22-970d-39a83fd2abe2",
+      "name": "Execute a SQL query",
+      "credentials": {
+        "postgres": {
+          "id": "9PkVclWNXi7t3W0k",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1504,
+        -32
+      ],
+      "id": "5c3364bb-d63d-49df-a41c-a3009f985fa1",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        944,
+        48
+      ],
+      "id": "3c7f958c-9bbf-44a3-b4b5-9ebfa89d2c1d",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "name": "Replace Me",
+      "typeVersion": 1,
+      "position": [
+        1264,
+        112
+      ],
+      "id": "900ce293-ffef-409e-a2e0-2c0b6a25f912"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO overtimes (message_id, event_id, time,start_date,event,position)\nVALUES (\n  '{{$json.message_key}}',\n  '{{$json.event_id}}',\n  '{{$json.time}}',\n  '{{$json.dateTime}}',\n  '{{$json.event}}',\n   '{{$json.position}}'\n);\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1472,
+        112
+      ],
+      "id": "5558420b-e464-4ffe-a864-fdffcb246063",
+      "name": "Execute a SQL query1",
+      "credentials": {
+        "postgres": {
+          "id": "9PkVclWNXi7t3W0k",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const genOvertime = $json.gen_overtime ?? [];\nconst message_key = $('Edit Fields').first().json.message_key\nreturn genOvertime.map((item, index) => ({\n  json: {\n    ...item ,\n  message_key\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        48
+      ],
+      "id": "c1cd9857-a2e8-42e4-a5a2-60ba3b8691ef",
+      "name": "Code in JavaScript2"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Replace Me",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Replace Me": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query1": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript2": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "9a817802-09e9-4b69-bb5f-66db0b3ff7ca",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "db4b0e681f0eee9c442f5f321f39c5ca01fed8a9ac3a130da4919189885d79fd"
+  },
+  "id": "usaGn939fpiK2XJP",
+  "tags": []
+}
